@@ -1,0 +1,17 @@
+{
+  "branches": ["main"],
+  "repositoryUrl": "https://github.com/mini-app-polis/task-groomer-cog.git",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/changelog", { "changelogFile": "CHANGELOG.md" }],
+    ["@semantic-release/exec", {
+      "prepareCmd": "printf '__version__ = \"%s\"\\n' \"${nextRelease.version}\" > src/task_groomer_cog/_version.py"
+    }],
+    ["@semantic-release/git", {
+      "assets": ["CHANGELOG.md", "src/task_groomer_cog/_version.py"],
+      "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+    }],
+    "@semantic-release/github"
+  ]
+}

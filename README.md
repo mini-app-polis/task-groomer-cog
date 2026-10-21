@@ -1,0 +1,122 @@
+# task-groomer-cog
+
+[![CI](https://github.com/mini-app-polis/task-groomer-cog/actions/workflows/ci.yml/badge.svg)](https://github.com/mini-app-polis/task-groomer-cog/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/mini-app-polis/task-groomer-cog?label=version)](https://github.com/mini-app-polis/task-groomer-cog/releases)
+
+Grooms tasks on the board. Every task is meant to be worked by an agent that
+has only the task and the repositories it names, so a task is ready when an
+agent could finish it without asking. This cog reads a task that is not
+ready, looks at the code it is about, and proposes what the task should
+say. It never writes to the board: task-manager-cog applies the proposal.
+See [ADR-001](docs/decisions/ADR-001-propose-never-write.md).
+
+## Flow
+
+```
+task-manager-cog sweep ──POST /v1/tasks/groomings/jobs──► api-kaianolevine-com
+                                                                │
+                                                     task-groomer-jobs
+                                                                ▼
+                                                   task-groomer-cog (Lambda)
+                                                     1. check the month's spend
+                                                     2. the model reads the task,
+                                                        then the code, with
+                                                        read-only tools
+                                                     3. it calls propose, once
+                                                     4. record the run's cost
+                                                                │
+           POST /v1/tasks/groomings/proposals ◄─────────────────┘
+                                │
+                   task-manager-jobs.fifo ──► task-manager-cog applies it
+```
+
+The model is given the task, the board's definition of ready, every
+repository in the ecosystem registry with its description, and the names
+of the other open tasks. Its tools list, read and search files in the
+fleet's repositories, read from GitHub zipballs on `dev` (or `main` for a
+repository without one), in memory. It ends with one `propose` call: the
+title, Done when, Where, Constraints, Effort, Blocked by, a body, and
+questions for anything it could not settle from the task and the code.
+
+## Caps
+
+| Cap | Setting | Default |
+|---|---|---|
+| Model | `GROOMER_MODEL` | `claude-sonnet-5-5` |
+| Tool rounds per run | `GROOMER_MAX_ROUNDS` | 8; the last must propose |
+| Input tokens per run | `GROOMER_MAX_INPUT_TOKENS` | 150000; past 80% the next round must propose |
+| Output tokens per reply | `GROOMER_MAX_OUTPUT_TOKENS` | 8192 |
+| Spend per calendar month (UTC) | `GROOMER_MONTHLY_CAP_USD` | 20; checked before every request |
+
+The fixed part of the prompt and the tools are cached, so every round after
+the first reads them at the cache price. A run's cost is recorded with the
+API (`POST /v1/tasks/groomings/runs`) whatever the outcome, and the month's
+total (`GET /v1/tasks/groomings/spend`) is what the cap is checked
+against. A model missing from `pricing.py` is refused: it could not be
+capped.
+
+There are no automatic retries. The queue delivers each job once, so a run
+is never paid for twice; a run that fails is reported and the task is
+groomed again when it next changes.
+
+## Layout
+
+```
+src/task_groomer_cog/
+  worker.py     Lambda entrypoint: one job, one paid run, one proposal
+  agent.py      the run: the request loop, the tools and every cap
+  prompt.py     what the model is told
+  proposal.py   the propose call, checked, as the contract's proposal
+  repos.py      read-only access to the fleet's repositories
+  registry.py   the fleet's repositories, from ecosystem.yaml
+  pricing.py    what a run costs
+  __main__.py   estimate and run by hand
+  _deadline.py  stop a run before the function timeout
+```
+
+## Running locally (DOC-013)
+
+**Prerequisites:** Python ≥ 3.11, [uv](https://docs.astral.sh/uv/), and the
+[Doppler CLI](https://docs.doppler.com/docs/install-cli). Secrets come from
+Doppler's shared `dev` config; nothing reads a `.env` file. `.env.example`
+lists the names read.
+
+```bash
+git clone git@github.com:mini-app-polis/task-groomer-cog.git
+cd task-groomer-cog
+doppler setup                              # reads doppler.yaml: mini-app-polis-ecosystem / dev
+uv sync --all-extras
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
+**Estimate first.** These read the board and count each task's first
+request with Anthropic's free token-counting endpoint. Nothing is spent:
+
+```bash
+doppler run -- uv run python -m task_groomer_cog --dry-run --task 1219712805103580
+doppler run -- uv run python -m task_groomer_cog --dry-run --board
+```
+
+**Groom one task for real.** This is a paid run. It prints the proposal,
+the tools the model used and the cost, and writes nothing anywhere:
+
+```bash
+doppler run -- uv run python -m task_groomer_cog --task 1219712805103580
+```
+
+## Running tests
+
+```bash
+uv run pytest                              # with coverage, as CI runs it
+uv run ruff check . && uv run ruff format --check .
+uv run mypy src/
+```
+
+## Deployment
+
+A release on `main` deploys the Lambda through the shared `lambda-deploy`
+workflow. The function, queue, dead-letter queue and alarms are
+`module "task_groomer"` in `mini-app-polis/infra`; the repository variables
+`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION` and `AWS_FUNCTION_NAME` come from that
+stack's `cogs` output.
