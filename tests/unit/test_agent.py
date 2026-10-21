@@ -174,3 +174,11 @@ def test_a_reply_cut_off_at_max_tokens_fails_the_run() -> None:
     with pytest.raises(GroomingFailed, match="max_tokens") as raised:
         _groom(Script(cut))
     assert raised.value.cost_usd > 0
+
+
+def test_the_owners_answers_reach_the_model() -> None:
+    from task_groomer_cog.prompt import task_message
+
+    answered = TASK.model_copy(update={"comments": ["It is for me only."]})
+    assert "It is for me only." in task_message(answered)
+    assert "comments since" not in task_message(TASK)
