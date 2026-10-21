@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.0.0...v1.1.0) (2026-10-21)
+
+
+### Features
+
+* **groom:** read the owner's answers to its questions ([75281eb](https://github.com/mini-app-polis/task-groomer-cog/commit/75281eb660e5596a476afc10b10aa2630631bde7))
+
 # 1.0.0 (2026-10-21)
 
 
