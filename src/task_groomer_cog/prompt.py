@@ -79,7 +79,7 @@ def task_message(task: GroomingTask) -> str:
     """The first user message: the task as it stands."""
     problems = "\n".join(f"- {p}" for p in task.problems) or "- (none)"
     tags = ", ".join(task.tags) or "(none)"
-    return (
+    message = (
         f"Groom this task.\n\n"
         f"Name: {task.name}\n"
         f"Column: {task.section or '(unknown)'}\n"
@@ -87,3 +87,11 @@ def task_message(task: GroomingTask) -> str:
         f"Body:\n{task.notes.strip() or '(empty)'}\n\n"
         f"What the board's linter found missing:\n{problems}\n"
     )
+    if task.comments:
+        answers = "\n\n".join(f"- {c.strip()}" for c in task.comments)
+        message += (
+            "\nThe owner's comments since this task's last grooming questions, "
+            "oldest first. They answer those questions; use them, and do not "
+            f"ask again what they settle:\n{answers}\n"
+        )
+    return message
