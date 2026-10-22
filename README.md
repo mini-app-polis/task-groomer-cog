@@ -31,8 +31,9 @@ task-manager-cog sweep ──POST /v1/tasks/groomings/jobs──► api-kaianole
 ```
 
 The model is given the task, the board's definition of ready, every
-repository in the ecosystem registry with its description, and the names
-of the other open tasks. Its tools list, read and search files in the
+repository in the ecosystem registry with its description, the names
+of the other open tasks, and any finished task this one mentions, marked
+`(done)`. Its tools list, read and search files in the
 fleet's repositories, read from GitHub zipballs on `dev` (or `main` for a
 repository without one), in memory. It ends with one `propose` call: the
 title, Done when, Where, Constraints, Effort, Blocked by, a body, and
