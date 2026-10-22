@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.2.1...v1.2.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **agent:** ask for the proposal instead of forcing tool_choice ([f4e8788](https://github.com/mini-app-polis/task-groomer-cog/commit/f4e878880b4f585b6ce15f58e9f923428dd7899a))
+
 ## [1.2.1](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.2.0...v1.2.1) (2026-10-22)
 
 
