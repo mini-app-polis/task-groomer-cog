@@ -1,3 +1,12 @@
+## [1.1.2](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.1.1...v1.1.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **cli:** log the estimate and the run, and document the public definitions ([13d0b6b](https://github.com/mini-app-polis/task-groomer-cog/commit/13d0b6b66bdae370b508aa8c8d92f40fe67acb23))
+* **deps:** bump miniapppolis-common-utils to 6.16.0 ([e825980](https://github.com/mini-app-polis/task-groomer-cog/commit/e825980fb1438e105f32e0fa22058850007a9140))
+* **repos:** try GitHub and the registry again on a transient failure ([d006a8b](https://github.com/mini-app-polis/task-groomer-cog/commit/d006a8b8f1e121a0b58887e08eae918df2be8cf6))
+
 ## [1.1.1](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.1.0...v1.1.1) (2026-10-21)
 
 
