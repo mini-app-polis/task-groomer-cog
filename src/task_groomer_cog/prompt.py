@@ -37,7 +37,7 @@ several files), or L (more than one pull request; implementing an L task \
 means splitting it into subtasks, so say in done_when what the subtasks \
 must cover).
 - blocked_by: the ids of other open tasks that must be finished first, from \
-the board list below, comma separated, or "None".
+the board list below, comma separated, or "None". Never a task marked (done).
 - body: why the task exists, in a few sentences, keeping everything the \
 task already says that matters, and links to what the worker will need. \
 Write for someone who has not seen the task before.
@@ -57,12 +57,14 @@ that part out and ask a question instead. A wrong guess in done_when costs \
 more than a question. A task that is only an idea with no detail gets \
 questions, not invented requirements.
 - If the task duplicates another open task, say so in a question naming it.
+- A task in the board list marked (done) is finished. A reference to it is \
+settled: do not ask whether it exists or is done.
 - Write plainly. No marketing language, no filler.
 """
 
 
 def system_prompt(registry: Mapping[str, str], board: Sequence[str]) -> str:
-    """The fixed part: instructions, the fleet's repositories, the open tasks."""
+    """The fixed part: instructions, the repositories, the other tasks it may name."""
     repos = "\n".join(
         f"- {name}: {description or '(no description)'}"
         for name, description in registry.items()
@@ -71,7 +73,8 @@ def system_prompt(registry: Mapping[str, str], board: Sequence[str]) -> str:
     return (
         f"{INSTRUCTIONS}\n"
         f"The registry: every repository in the fleet.\n{repos}\n\n"
-        f"The other open tasks on the board.\n{tasks}\n"
+        f"The other open tasks on the board, and any finished task this one "
+        f"mentions, marked (done).\n{tasks}\n"
     )
 
 
