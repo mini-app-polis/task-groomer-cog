@@ -32,4 +32,12 @@ def test_the_registry_maps_repositories_to_descriptions() -> None:
 )
 def test_an_unreadable_registry_stops_the_run(status: int, text: str) -> None:
     with pytest.raises(registry.RegistryUnavailable):
-        registry.load_registry(client=_client(status, text))
+        registry.load_registry(client=_client(status, text), sleep=lambda _: None)
+
+
+def test_a_transient_failure_is_read_again() -> None:
+    answers = iter([httpx.Response(503), httpx.Response(200, text=DOC)])
+    client = httpx.Client(transport=httpx.MockTransport(lambda _: next(answers)))
+    waits: list[float] = []
+    assert "infra" in registry.load_registry(client=client, sleep=waits.append)
+    assert waits == [2.0]

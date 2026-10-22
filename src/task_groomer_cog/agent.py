@@ -164,6 +164,8 @@ class BudgetSpent(GroomingFailed):
 
 @dataclass(frozen=True)
 class Limits:
+    """What one run may spend: the model, rounds, tokens, and the month's cap."""
+
     model: str = DEFAULT_MODEL
     max_rounds: int = 8
     max_input_tokens: int = 150_000
@@ -172,6 +174,8 @@ class Limits:
 
     @classmethod
     def from_env(cls) -> Limits:
+        """The limits from ``GROOMER_*`` settings, each defaulting when unset."""
+
         def number(name: str, default: float) -> float:
             raw = (os.environ.get(name) or "").strip()
             return float(raw) if raw else default
@@ -252,9 +256,16 @@ def _post(http: httpx.Client, url: str, body: dict[str, Any]) -> dict[str, Any]:
     raise GroomingFailed("unreachable")  # pragma: no cover
 
 
+def _new_client() -> httpx.Client:
+    """The client a run's requests go through, each one sent by :func:`_post`."""
+    # no-retry: this only builds the client; it makes no request. Every
+    # request is sent by _post, which tries a transient failure again.
+    return httpx.Client(timeout=TIMEOUT_SECONDS)
+
+
 def count_tokens(body: dict[str, Any], *, http: httpx.Client | None = None) -> int:
     """The first request's input tokens, from the free counting endpoint."""
-    client = http or httpx.Client(timeout=TIMEOUT_SECONDS)
+    client = http or _new_client()
     counted = {
         k: v for k, v in body.items() if k in {"model", "system", "tools", "messages"}
     }
@@ -344,7 +355,7 @@ def _loop(
     http: httpx.Client | None,
 ) -> RunResult:
     pricing.price_of(limits.model)  # refuse a model that cannot be capped
-    client = http or httpx.Client(timeout=TIMEOUT_SECONDS)
+    client = http or _new_client()
     body = request_body(task, registry, board, limits)
     month = spent_this_month()
 
