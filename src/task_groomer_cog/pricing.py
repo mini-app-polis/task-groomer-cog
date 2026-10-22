@@ -79,6 +79,7 @@ class Usage:
 
 
 def price_of(model: str) -> Price:
+    """The model's price. Raises :class:`UnpricedModel` for one with none here."""
     try:
         return PRICES[model]
     except KeyError:
