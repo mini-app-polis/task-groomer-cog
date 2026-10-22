@@ -44,8 +44,8 @@ questions for anything it could not settle from the task and the code.
 | Cap | Setting | Default |
 |---|---|---|
 | Model | `GROOMER_MODEL` | `claude-sonnet-5-5` |
-| Tool rounds per run | `GROOMER_MAX_ROUNDS` | 8; the last must propose |
-| Input tokens per run | `GROOMER_MAX_INPUT_TOKENS` | 150000; past 80% the next round must propose |
+| Tool rounds per run | `GROOMER_MAX_ROUNDS` | 8; the last asks for the proposal, and a run without one fails |
+| Input tokens per run | `GROOMER_MAX_INPUT_TOKENS` | 150000; past 80% each round asks for the proposal |
 | Output tokens per reply | `GROOMER_MAX_OUTPUT_TOKENS` | 8192 |
 | Spend per calendar month (UTC) | `GROOMER_MONTHLY_CAP_USD` | 20; checked before every request |
 

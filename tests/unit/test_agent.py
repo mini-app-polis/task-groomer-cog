@@ -85,15 +85,31 @@ def test_the_last_round_must_propose() -> None:
         tool_use("propose", PROPOSAL_INPUT, id_="t2"),
     )
     _groom(script, limits=Limits(max_rounds=2))
-    assert script.bodies[1]["tool_choice"] == {"type": "tool", "name": "propose"}
+    second = script.bodies[1]
+    assert "tool_choice" not in second
+    assert second["messages"][-1]["content"][-1] == {
+        "type": "text",
+        "text": agent.PROPOSE_NOW,
+    }
+    assert "tool_choice" not in script.bodies[0]
 
 
-def test_nearing_the_input_cap_forces_the_proposal() -> None:
+def test_a_one_round_run_asks_for_the_proposal_in_the_task_message() -> None:
+    script = Script(tool_use("propose", PROPOSAL_INPUT))
+    _groom(script, limits=Limits(max_rounds=1))
+    only = script.bodies[0]
+    assert "tool_choice" not in only
+    assert only["messages"][0]["content"].endswith(agent.PROPOSE_NOW)
+
+
+def test_nearing_the_input_cap_asks_for_the_proposal() -> None:
     big = tool_use("list_files", {"repo": "infra"})
     big["usage"] = usage(input_tokens=900)
     script = Script(big, tool_use("propose", PROPOSAL_INPUT, id_="t2"))
     _groom(script, limits=Limits(max_input_tokens=1000))
-    assert script.bodies[1]["tool_choice"] == {"type": "tool", "name": "propose"}
+    second = script.bodies[1]
+    assert "tool_choice" not in second
+    assert second["messages"][-1]["content"][-1]["text"] == agent.PROPOSE_NOW
 
 
 def test_a_reply_without_a_tool_is_told_to_propose() -> None:
@@ -101,12 +117,13 @@ def test_a_reply_without_a_tool_is_told_to_propose() -> None:
     result, _ = _groom(script)
     assert result.proposal == PROPOSAL_INPUT
     assert script.bodies[1]["messages"][-1]["content"] == "Call the propose tool now."
+    assert "tool_choice" not in script.bodies[1]
 
 
 def test_no_proposal_within_the_rounds_fails_with_its_cost() -> None:
     script = Script(*[tool_use("list_files", {"repo": "infra"})] * 2)
     with pytest.raises(GroomingFailed) as raised:
-        # The forced last round is ignored by this script: it still reads.
+        # The last round asks for the proposal; this script still reads.
         _groom(script, limits=Limits(max_rounds=2))
     assert raised.value.cost_usd > 0
 

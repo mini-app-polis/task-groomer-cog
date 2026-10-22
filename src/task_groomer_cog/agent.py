@@ -5,16 +5,21 @@ call the read-only tools (list, read and search files in the fleet's
 repositories); it ends by calling ``propose`` once, and that call's input
 is the proposal. The loop is this module's own, so it can hold every cap:
 
-- **Rounds.** At most ``GROOMER_MAX_ROUNDS``. The last round requires the
-  propose call, so a run always ends with a proposal.
+- **Rounds.** At most ``GROOMER_MAX_ROUNDS``. The last round tells the
+  model to propose; a run that still has no proposal after it fails.
 - **Tokens.** At most ``GROOMER_MAX_INPUT_TOKENS`` of input across the run;
-  once that is close, the next round requires the propose call.
+  once that is close, each round from then on tells the model to propose.
   ``GROOMER_MAX_OUTPUT_TOKENS`` caps each reply; a reply cut off at it fails
   the run rather than proposing half a proposal. A proposal for a task that
   spans the fleet runs to a few thousand tokens, hence the default.
 - **Money.** Before every request, the month's spend so far plus this run's
   cost must be under ``GROOMER_MONTHLY_CAP_USD``. Past it, the run stops
   with :class:`BudgetSpent` and nothing is proposed.
+
+The propose call is asked for in the conversation, not forced with
+``tool_choice``: the current models (Sonnet 5.5, Opus 5.5) answer a forced
+``tool_choice`` with a 400. Leaving ``tool_choice`` alone also keeps the
+cached prefix the same on every round.
 
 The fixed prompt and the tool definitions are marked for caching, so every
 round after the first reads them from the cache at a tenth of the price or
@@ -64,6 +69,12 @@ DEFAULT_MODEL = "claude-sonnet-5-5"
 INPUT_HEADROOM = 0.8
 
 PROPOSE = "propose"
+
+#: Added to the last user turn of a round that must propose.
+PROPOSE_NOW = (
+    "This is the last round: call the propose tool now with what you have, "
+    "and ask about anything unsettled in questions."
+)
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -282,6 +293,16 @@ def _usage(reply: Mapping[str, Any]) -> pricing.Usage:
     )
 
 
+def _ask_for_proposal(messages: list[dict[str, Any]]) -> None:
+    """Tell the model, in the last user turn, that this round must propose."""
+    turn = messages[-1]
+    content = turn["content"]
+    if isinstance(content, str):
+        turn["content"] = f"{content}\n\n{PROPOSE_NOW}"
+    else:
+        turn["content"] = [*content, {"type": "text", "text": PROPOSE_NOW}]
+
+
 def _run_tool(repos: Repos, name: str, args: Mapping[str, Any]) -> tuple[str, bool]:
     """A tool's result text, and whether it is an error."""
     try:
@@ -369,7 +390,7 @@ def _loop(
             result.usage.prompt_tokens >= limits.max_input_tokens * INPUT_HEADROOM
         )
         if last:
-            body["tool_choice"] = {"type": "tool", "name": PROPOSE}
+            _ask_for_proposal(body["messages"])
 
         reply = _post(client, API_URL, body)
         usage = _usage(reply)
@@ -404,7 +425,6 @@ def _loop(
             body["messages"].append(
                 {"role": "user", "content": "Call the propose tool now."}
             )
-            body["tool_choice"] = {"type": "tool", "name": PROPOSE}
             continue
 
         results = []
