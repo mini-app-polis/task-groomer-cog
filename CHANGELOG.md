@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.1.2...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* **prompt:** treat a task marked done as settled ([cac1914](https://github.com/mini-app-polis/task-groomer-cog/commit/cac191429925bb91321913e7c455abfd52c91139))
+
 ## [1.1.2](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.1.1...v1.1.2) (2026-10-22)
 
 
