@@ -100,6 +100,32 @@ def test_a_github_failure_is_a_tool_error() -> None:
         client=httpx.Client(
             transport=httpx.MockTransport(lambda r: httpx.Response(500))
         ),
+        sleep=lambda _: None,
     )
     with pytest.raises(RepoError, match="GitHub answered 500"):
+        repos.list_files("infra")
+
+
+def test_a_transient_download_failure_is_tried_again() -> None:
+    answers = iter([httpx.Response(502), httpx.Response(200, content=_zip())])
+    waits: list[float] = []
+    repos = Repos(
+        {"infra"},
+        client=httpx.Client(transport=httpx.MockTransport(lambda r: next(answers))),
+        sleep=waits.append,
+    )
+    assert repos.list_files("infra").splitlines()[0] == "infra@dev:/"
+    assert waits == [2.0]
+
+
+def test_an_unreachable_github_is_a_tool_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=request)
+
+    repos = Repos(
+        {"infra"},
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+    )
+    with pytest.raises(RepoError, match="could not be reached"):
         repos.list_files("infra")

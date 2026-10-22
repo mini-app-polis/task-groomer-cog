@@ -57,13 +57,30 @@ def test_the_estimate_stops_at_the_input_cap() -> None:
     assert capped.high_usd < uncapped.high_usd
 
 
+class _Lines:
+    """Stands in for the logger and keeps what was logged."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def info(self, message: str, *args: object) -> None:
+        self.lines.append(message % args)
+
+
+@pytest.fixture
+def logged(monkeypatch: pytest.MonkeyPatch) -> _Lines:
+    lines = _Lines()
+    monkeypatch.setattr(cli, "log", lines)
+    return lines
+
+
 def test_a_board_dry_run_counts_the_grooming_columns_only(
-    board: list[dict], capsys: pytest.CaptureFixture[str]
+    board: list[dict], logged: _Lines
 ) -> None:
     assert cli.main(["--board", "--dry-run"]) == 0
-    out = capsys.readouterr().out
+    out = "\n".join(logged.lines)
     assert "MINI-1 · One" in out and "Four" in out
-    assert "MINI-2 · Two" not in out.split("\n\n")[0]
+    assert not any("MINI-2 · Two" in line for line in logged.lines)
     assert "2 task(s) with claude-sonnet-5-5" in out
     assert "Nothing was spent." in out
     assert len(board) == 2
@@ -86,10 +103,10 @@ def test_an_unknown_task_is_refused(board: list[dict]) -> None:
         cli.main(["--task", "999", "--dry-run"])
 
 
-def test_a_real_run_prints_the_proposal_and_cost(
+def test_a_real_run_logs_the_proposal_and_cost(
     board: list[dict],
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    logged: _Lines,
 ) -> None:
     monkeypatch.setattr(
         cli,
@@ -103,6 +120,6 @@ def test_a_real_run_prints_the_proposal_and_cost(
         ),
     )
     assert cli.main(["--task", "1"]) == 0
-    out = capsys.readouterr().out
+    out = "\n".join(logged.lines)
     assert '"title": "Do one"' in out
     assert "$0.0912" in out

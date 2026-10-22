@@ -19,14 +19,22 @@ import io
 import os
 import posixpath
 import re
+import time
 import zipfile
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 
 import httpx
 
 ORG = "mini-app-polis"
 BRANCHES: tuple[str, ...] = ("dev", "main")
 TIMEOUT_SECONDS = 60.0
+
+#: Downloads of one archive before the tool call fails. A blip at GitHub
+#: would otherwise end a paid run that has already spent its tokens.
+ATTEMPTS = 3
+
+#: Answers worth asking again: rate limits and GitHub's own failures.
+TRANSIENT = frozenset({429, 500, 502, 503, 504})
 
 #: What a tool result may hold, so one call cannot swamp the context.
 MAX_LIST_ENTRIES = 300
@@ -51,13 +59,20 @@ class Repos:
     """The repositories one run has opened."""
 
     def __init__(
-        self, registry: Collection[str], *, client: httpx.Client | None = None
+        self,
+        registry: Collection[str],
+        *,
+        client: httpx.Client | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._registry = frozenset(registry)
         self._client = client
+        self._sleep = sleep
         self._archives: dict[str, tuple[str, zipfile.ZipFile, str]] = {}
 
     def _http(self) -> httpx.Client:
+        # no-retry: this only builds the client; it makes no request. The
+        # archive download goes through _download, which tries again.
         if self._client is None:
             self._client = httpx.Client(timeout=TIMEOUT_SECONDS, follow_redirects=True)
         return self._client
@@ -77,7 +92,7 @@ class Repos:
             headers["Authorization"] = f"Bearer {token}"
         for branch in BRANCHES:
             url = f"https://api.github.com/repos/{ORG}/{repo}/zipball/{branch}"
-            response = self._http().get(url, headers=headers)
+            response = self._download(url, headers)
             if response.status_code == 404:
                 continue
             if response.status_code != 200:
@@ -91,12 +106,27 @@ class Repos:
             return self._archives[repo]
         raise RepoError(f"{repo} has neither a dev nor a main branch on GitHub")
 
+    def _download(self, url: str, headers: dict[str, str]) -> httpx.Response:
+        """One archive, tried again on a transient failure."""
+        for attempt in range(1, ATTEMPTS + 1):
+            try:
+                response = self._http().get(url, headers=headers)
+            except httpx.TransportError as exc:
+                if attempt == ATTEMPTS:
+                    raise RepoError(f"GitHub could not be reached: {exc}") from exc
+            else:
+                if response.status_code not in TRANSIENT or attempt == ATTEMPTS:
+                    return response
+            self._sleep(2.0**attempt)
+        raise RepoError("GitHub could not be reached")  # pragma: no cover
+
     @staticmethod
     def _clean(path: str) -> str:
         cleaned = posixpath.normpath("/" + (path or "").strip()).lstrip("/")
         return "" if cleaned == "." else cleaned
 
     def branch(self, repo: str) -> str:
+        """The branch the repository was read from: dev, or main without one."""
         return self._open(repo)[2]
 
     def list_files(self, repo: str, path: str = "") -> str:

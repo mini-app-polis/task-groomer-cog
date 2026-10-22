@@ -69,15 +69,19 @@ class UnprocessableMessage(RuntimeError):
 class GroomingApi(Protocol):
     """The API calls a run makes: the API, or a fake in a test."""
 
-    def grooming_spend(self) -> GroomingSpend: ...
+    def grooming_spend(self) -> GroomingSpend:
+        """This month's paid grooming so far, for the cap."""
+        ...
 
-    def record_grooming_run(
-        self, payload: GroomingRunCreate
-    ) -> GroomingRunRecorded: ...
+    def record_grooming_run(self, payload: GroomingRunCreate) -> GroomingRunRecorded:
+        """Record one paid run and its cost."""
+        ...
 
     def submit_grooming_proposal(
         self, payload: GroomingProposal
-    ) -> GroomingProposalAccepted: ...
+    ) -> GroomingProposalAccepted:
+        """Hand a proposal back for the task manager to apply."""
+        ...
 
 
 def _api() -> GroomingApi:

@@ -12,6 +12,8 @@ is not listed.
 from __future__ import annotations
 
 import os
+import time
+from collections.abc import Callable
 
 import httpx
 import yaml
@@ -22,6 +24,12 @@ DEFAULT_URL = (
 )
 
 TIMEOUT_SECONDS = 20.0
+
+#: Reads of the registry before the run gives up.
+ATTEMPTS = 3
+
+#: Answers worth asking again: rate limits and the server's own failures.
+_TRANSIENT = frozenset({429, 500, 502, 503, 504})
 
 
 class RegistryUnavailable(RuntimeError):
@@ -44,15 +52,32 @@ def parse_registry(text: str) -> dict[str, str]:
     return registry
 
 
-def load_registry(*, client: httpx.Client | None = None) -> dict[str, str]:
-    """Read the registry. Raises :class:`RegistryUnavailable` on any failure."""
+def load_registry(
+    *,
+    client: httpx.Client | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, str]:
+    """Read the registry. Raises :class:`RegistryUnavailable` on any failure.
+
+    A transient failure (no answer, a rate limit, a 5xx) is tried again, up
+    to :data:`ATTEMPTS` reads in all.
+    """
     url = (os.environ.get("ECOSYSTEM_YAML_URL") or "").strip() or DEFAULT_URL
-    try:
-        http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
-        response = http.get(url)
-        response.raise_for_status()
-        return parse_registry(response.text)
-    except RegistryUnavailable:
-        raise
-    except Exception as exc:  # noqa: BLE001 — every failure means the same
-        raise RegistryUnavailable(f"could not read {url}: {exc}") from exc
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
+            response = http.get(url)
+            if response.status_code in _TRANSIENT and attempt < ATTEMPTS:
+                sleep(2.0**attempt)
+                continue
+            response.raise_for_status()
+            return parse_registry(response.text)
+        except RegistryUnavailable:
+            raise
+        except httpx.TransportError as exc:
+            if attempt == ATTEMPTS:
+                raise RegistryUnavailable(f"could not read {url}: {exc}") from exc
+            sleep(2.0**attempt)
+        except Exception as exc:  # noqa: BLE001 — every failure means the same
+            raise RegistryUnavailable(f"could not read {url}: {exc}") from exc
+    raise RegistryUnavailable(f"could not read {url}")  # pragma: no cover

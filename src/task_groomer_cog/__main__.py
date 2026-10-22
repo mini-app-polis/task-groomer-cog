@@ -12,7 +12,7 @@ spent. ``--board`` estimates every open task in the grooming columns, which
 is an upper bound, since the sweep only sends tasks that are not ready.
 
 Without ``--dry-run`` the one task is groomed for real: the run is paid,
-and its proposal and cost are printed. Nothing is written to the board,
+and its proposal and cost are logged. Nothing is written to the board,
 and nothing is recorded with the API, so the run does not count against
 the month's cap; it is yours to account for.
 """
@@ -26,6 +26,7 @@ import os
 import sys
 from dataclasses import dataclass
 
+from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import GroomingTask
 from mini_app_polis.asana import AsanaClient, AsanaTaskRecord
 
@@ -34,6 +35,8 @@ from .agent import Limits, count_tokens, groom, request_body
 from .proposal import build
 from .registry import load_registry
 from .repos import Repos
+
+log = logger_mod.get_logger()
 
 GROOM_SECTIONS = ("ideas", "refining", "blocked")
 DO_NOT_WORK = "do not work"
@@ -48,6 +51,8 @@ PROPOSE_OUTPUT = 1_500
 
 @dataclass(frozen=True)
 class Estimate:
+    """A task's first request, and what a short run and a long one would cost."""
+
     first_request_tokens: int
     low_usd: float
     high_usd: float
@@ -81,6 +86,7 @@ def estimate(first: int, model: str, max_input: int) -> Estimate:
 
 
 def as_grooming_task(task: AsanaTaskRecord) -> GroomingTask:
+    """The task as a groomer is given it, from its record on the board."""
     content = f"{task.name}\n{task.notes}"
     return GroomingTask(
         task_gid=task.gid,
@@ -94,6 +100,7 @@ def as_grooming_task(task: AsanaTaskRecord) -> GroomingTask:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Estimate one task or the board, or groom one task for real."""
     parser = argparse.ArgumentParser(prog="python -m task_groomer_cog")
     which = parser.add_mutually_exclusive_group(required=True)
     which.add_argument("--task", help="the task's gid on the board")
@@ -133,13 +140,19 @@ def main(argv: list[str] | None = None) -> int:
             first = count_tokens(request_body(job, registry, others, limits))
             guess = estimate(first, limits.model, limits.max_input_tokens)
             low, high = low + guess.low_usd, high + guess.high_usd
-            print(
-                f"{task.name[:70]:<70}  first request {first:>6} tokens  "
-                f"${guess.low_usd:.3f}–${guess.high_usd:.3f}"
+            log.info(
+                "%-70s  first request %6d tokens  $%.3f–$%.3f",
+                task.name[:70],
+                first,
+                guess.low_usd,
+                guess.high_usd,
             )
-        print(
-            f"\n{len(chosen)} task(s) with {limits.model}: about "
-            f"${low:.2f}–${high:.2f}. Nothing was spent."
+        log.info(
+            "%d task(s) with %s: about $%.2f–$%.2f. Nothing was spent.",
+            len(chosen),
+            limits.model,
+            low,
+            high,
         )
         return 0
 
@@ -154,9 +167,9 @@ def main(argv: list[str] | None = None) -> int:
         limits=limits,
     )
     proposal = build(job, result.proposal, model=result.model, cost_usd=result.cost_usd)
-    print(json.dumps(proposal.model_dump(mode="json"), indent=2))
-    print(f"\nTools used: {', '.join(result.tool_calls) or 'none'}")
-    print(f"{result.rounds} round(s), {result.usage}, ${result.cost_usd:.4f}")
+    log.info("%s", json.dumps(proposal.model_dump(mode="json"), indent=2))
+    log.info("Tools used: %s", ", ".join(result.tool_calls) or "none")
+    log.info("%d round(s), %s, $%.4f", result.rounds, result.usage, result.cost_usd)
     return 0
 
 
