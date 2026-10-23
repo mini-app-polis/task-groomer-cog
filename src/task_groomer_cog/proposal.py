@@ -155,7 +155,9 @@ def build(
         effort=effort if effort in ("S", "M", "L") else None,
         blocked_by=_text(proposed.get("blocked_by"), _LIMITS["blocked_by"]),
         body=_text(proposed.get("body"), _LIMITS["body"]),
-        executor=executor,
+        # Only when there is one: the API is sent the fields set, and one
+        # on an older contract refuses a field it does not know.
+        **({"executor": executor} if executor else {}),
         questions=questions,
         model=model,
         cost_usd=round(cost_usd, 6),

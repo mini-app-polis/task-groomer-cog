@@ -139,3 +139,11 @@ def test_an_off_contract_child_executor_is_dropped_not_the_split() -> None:
         split=True,
     )
     assert [c.executor for c in proposal.children] == [None]
+
+
+def test_a_proposal_without_an_executor_does_not_send_the_field() -> None:
+    plain = build(TASK, {"title": "T"}, model="m", cost_usd=0)
+    assert "executor" not in plain.model_fields_set
+    assert "children" not in plain.model_fields_set
+    named = build(TASK, {"title": "T", "executor": "person"}, model="m", cost_usd=0)
+    assert "executor" in named.model_fields_set
