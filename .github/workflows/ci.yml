@@ -29,7 +29,7 @@ jobs:
       pytest-args: "--cov=task_groomer_cog --cov-report=term-missing"
       # TEST-012: every Python repo typechecks in CI, against its [tool.mypy].
       typecheck: "uv run mypy src/"
-      # No terraform-dir: the worker's infra is module "task_groomer" in
+      # No terraform-dir: the worker's infra is declared in
       # mini-app-polis/infra, as for the other Lambda cogs.
 
   release:
@@ -97,7 +97,7 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  # The task-groomer-jobs worker, deployed here as a job: a release published
+  # The Lambda worker, deployed here as a job: a release published
   # with GITHUB_TOKEN starts no workflows, so `on: release` would never fire
   # and the Lambda would drift behind main.
   deploy:
@@ -109,7 +109,7 @@ jobs:
     uses: mini-app-polis/.github/.github/workflows/lambda-deploy.yml@v3
     with:
       ref: ${{ needs.release.outputs.tag }}
-      # These three match this cog's block in mini-app-polis/infra cogs.tf; the
+      # These three match the function declared in mini-app-polis/infra; the
       # deploy refuses a function whose architecture differs.
       handler: task_groomer_cog.worker.lambda_handler
       architecture: arm64

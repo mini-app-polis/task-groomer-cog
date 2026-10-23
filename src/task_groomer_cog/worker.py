@@ -1,6 +1,7 @@
 """The Lambda entrypoint: one grooming job in, one proposal out.
 
-task-groomer-cog runs on Lambda behind its own queue, ``task-groomer-jobs``.
+task-groomer-cog runs on Lambda behind its own queue, declared in
+mini-app-polis/infra.
 The API is the only producer: task-manager-cog asks it to groom a task
 (``POST /v1/tasks/groomings/jobs``), and it enqueues one message:
 
