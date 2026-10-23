@@ -123,3 +123,10 @@ def test_a_real_run_logs_the_proposal_and_cost(
     out = "\n".join(logged.lines)
     assert '"title": "Do one"' in out
     assert "$0.0912" in out
+
+
+def test_with_splitting_the_long_run_allows_for_a_larger_proposal() -> None:
+    plain = cli.estimate(10_000, "claude-sonnet-5-5", 10_000_000)
+    split = cli.estimate(10_000, "claude-sonnet-5-5", 10_000_000, split=True)
+    assert split.low_usd == plain.low_usd
+    assert split.high_usd > plain.high_usd

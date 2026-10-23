@@ -11,8 +11,12 @@ endpoint, then prices a short run and a long one: no model call, nothing
 spent. ``--board`` estimates every open task in the grooming columns, which
 is an upper bound, since the sweep only sends tasks that are not ready.
 
+With ``GROOMER_SPLIT=true`` the estimate's long run allows for a split's
+larger propose call.
+
 Without ``--dry-run`` the one task is groomed for real: the run is paid,
-and its proposal and cost are logged. Nothing is written to the board,
+and its proposal and cost are logged, with the children of a split listed
+one per line. Nothing is written to the board,
 and nothing is recorded with the API, so the run does not count against
 the month's cap; it is yours to account for.
 """
@@ -47,6 +51,8 @@ SHORT = (3, 3_000, 400)
 LONG = (8, 6_000, 600)
 #: The propose call's output, on top.
 PROPOSE_OUTPUT = 1_500
+#: A split's propose call, for the long run when splitting is on.
+SPLIT_PROPOSE_OUTPUT = 5_000
 
 
 @dataclass(frozen=True)
@@ -58,14 +64,17 @@ class Estimate:
     high_usd: float
 
 
-def estimate(first: int, model: str, max_input: int) -> Estimate:
+def estimate(
+    first: int, model: str, max_input: int, *, split: bool = False
+) -> Estimate:
     """Price a short run and a long one from the first request's size.
 
     Round one writes the prompt to the cache; every later round reads it
-    from the cache and adds what the tools returned since.
+    from the cache and adds what the tools returned since. With ``split``,
+    the long run ends in a split's larger propose call.
     """
 
-    def run(rounds: int, growth: int, output: int) -> float:
+    def run(rounds: int, growth: int, output: int, propose: int) -> float:
         total = 0.0
         sent = 0
         for k in range(1, rounds + 1):
@@ -75,14 +84,15 @@ def estimate(first: int, model: str, max_input: int) -> Estimate:
             sent += first + fresh
             usage = pricing.Usage(
                 input_tokens=fresh,
-                output_tokens=output + (PROPOSE_OUTPUT if k == rounds else 0),
+                output_tokens=output + (propose if k == rounds else 0),
                 cache_creation_input_tokens=first if k == 1 else 0,
                 cache_read_input_tokens=first if k > 1 else 0,
             )
             total += pricing.cost(model, usage)
         return total
 
-    return Estimate(first, run(*SHORT), run(*LONG))
+    long_propose = SPLIT_PROPOSE_OUTPUT if split else PROPOSE_OUTPUT
+    return Estimate(first, run(*SHORT, PROPOSE_OUTPUT), run(*LONG, long_propose))
 
 
 def as_grooming_task(task: AsanaTaskRecord) -> GroomingTask:
@@ -138,7 +148,9 @@ def main(argv: list[str] | None = None) -> int:
             job = as_grooming_task(task)
             others = [n for n in board if n != task.name]
             first = count_tokens(request_body(job, registry, others, limits))
-            guess = estimate(first, limits.model, limits.max_input_tokens)
+            guess = estimate(
+                first, limits.model, limits.max_input_tokens, split=limits.split
+            )
             low, high = low + guess.low_usd, high + guess.high_usd
             log.info(
                 "%-70s  first request %6d tokens  $%.3f–$%.3f",
@@ -166,8 +178,25 @@ def main(argv: list[str] | None = None) -> int:
         spent_this_month=lambda: 0.0,
         limits=limits,
     )
-    proposal = build(job, result.proposal, model=result.model, cost_usd=result.cost_usd)
+    proposal = build(
+        job,
+        result.proposal,
+        model=result.model,
+        cost_usd=result.cost_usd,
+        split=limits.split,
+    )
     log.info("%s", json.dumps(proposal.model_dump(mode="json"), indent=2))
+    for position, child in enumerate(proposal.children):
+        waits = ", ".join(str(s) for s in child.blocked_by_siblings) or "none"
+        log.info(
+            "Child %d: %s (%s, effort %s, executor %s, waits on children %s)",
+            position,
+            child.title,
+            child.where,
+            child.effort,
+            child.executor or "agent",
+            waits,
+        )
     log.info("Tools used: %s", ", ".join(result.tool_calls) or "none")
     log.info("%d round(s), %s, $%.4f", result.rounds, result.usage, result.cost_usd)
     return 0

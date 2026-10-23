@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from _fakes import TASK
+from mini_app_polis.api.contract import GROOMING_MAX_CHILDREN
 
 from task_groomer_cog.proposal import build
 
@@ -58,3 +59,83 @@ def test_a_task_already_tagged_keeps_its_tag() -> None:
         tagged, {"title": "T", "executor": "person"}, model="m", cost_usd=0
     )
     assert proposal.executor is None
+
+
+def _child(**overrides: object) -> dict[str, object]:
+    return {
+        "title": "common-python-utils: the contract",
+        "done_when": "It is released.",
+        "where": "common-python-utils",
+        "constraints": "None",
+        "effort": "S",
+        "body": "The shared shape first.",
+        **overrides,
+    }
+
+
+SPLIT = {
+    "title": "Executor tags across the fleet",
+    "done_when": "ignored for a split",
+    "where": "common-python-utils, task-manager-cog",
+    "body": "Why the work exists.",
+    "questions": [],
+    "children": [
+        _child(),
+        _child(
+            title="task-manager-cog: apply the tag",
+            where="task-manager-cog",
+            blocked_by_siblings=[0],
+            executor="cowork",
+        ),
+    ],
+}
+
+
+def test_a_split_carries_its_children_and_only_the_tasks_title_and_body() -> None:
+    proposal = build(TASK, SPLIT, model="m", cost_usd=0.2, split=True)
+    assert [c.title for c in proposal.children] == [
+        "common-python-utils: the contract",
+        "task-manager-cog: apply the tag",
+    ]
+    assert proposal.children[1].blocked_by_siblings == [0]
+    assert proposal.children[1].executor == "cowork"
+    assert proposal.title == "Executor tags across the fleet"
+    assert proposal.body == "Why the work exists."
+    assert proposal.done_when is None and proposal.where is None
+
+
+def test_children_are_ignored_when_splitting_is_off() -> None:
+    proposal = build(TASK, SPLIT, model="m", cost_usd=0.2)
+    assert proposal.children == []
+    assert proposal.where == "common-python-utils, task-manager-cog"
+
+
+@pytest.mark.parametrize(
+    "children",
+    [
+        [_child(), _child(blocked_by_siblings=[1])],  # waits on itself
+        [_child(), _child(blocked_by_siblings=[5])],  # no such sibling
+        [_child(), _child(effort="XL")],
+        [_child(), _child(done_when="")],
+        [_child(), "not a child"],
+        [_child()] * (GROOMING_MAX_CHILDREN + 1),
+    ],
+)
+def test_a_split_that_does_not_hold_is_dropped_whole(children: list) -> None:
+    proposal = build(
+        TASK, {**SPLIT, "children": children}, model="m", cost_usd=0.2, split=True
+    )
+    assert proposal.children == []
+    # The task is proposed as it would be without a split.
+    assert proposal.where == "common-python-utils, task-manager-cog"
+
+
+def test_an_off_contract_child_executor_is_dropped_not_the_split() -> None:
+    proposal = build(
+        TASK,
+        {**SPLIT, "children": [_child(executor="robot")]},
+        model="m",
+        cost_usd=0,
+        split=True,
+    )
+    assert [c.executor for c in proposal.children] == [None]

@@ -10,7 +10,11 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 from typing import get_args
 
-from mini_app_polis.api.contract import GroomingExecutor, GroomingTask
+from mini_app_polis.api.contract import (
+    GROOMING_MAX_CHILDREN,
+    GroomingExecutor,
+    GroomingTask,
+)
 
 #: Who can do a task, by its tag. The names are the contract's; what each
 #: means is said here, for the model; a test holds the two to the same names.
@@ -110,12 +114,43 @@ settled: do not ask whether it exists or is done.
 """
 
 
-def instructions() -> str:
-    """The board's rules, with the executors the contract names."""
-    return INSTRUCTIONS.replace("{executor_lines}", _executor_lines())
+SPLITTING = """\
+Splitting. A ready task has one of two shapes. A leaf names at most one \
+repository in where and has one executor. A compound task has no work of \
+its own: it is done when its children are, and waits on all of them.
+- If the task is neither, because its work spans more than one repository \
+or more than one executor, propose children instead of filling its own \
+done_when, where, constraints, effort and blocked_by. Each child is a leaf \
+with its own title, done_when, where (one repository; none only for a \
+cowork or person child with no repository), constraints, effort and body, \
+and an executor when it is not the agent's.
+- Put the children in the order they can be done. A child that must wait \
+for an earlier one (a shared library released before its consumer) names \
+it in blocked_by_siblings, by its position in children, counting from 0. \
+Existing tasks and dates a child waits for go in its blocked_by.
+- With children, give the task itself only its title and body. It becomes \
+their compound task: the board's manager writes its Done when and Blocked \
+by from the children once it has created them.
+- At most {max_children} children. If the work needs more, do not split: \
+ask how to divide it.
+- A task already in one of the two shapes is never split.
+"""
 
 
-def system_prompt(registry: Mapping[str, str], board: Sequence[str]) -> str:
+def instructions(*, split: bool = False) -> str:
+    """The board's rules, with the executors the contract names.
+
+    ``split`` adds the rules for splitting a task into children.
+    """
+    text = INSTRUCTIONS.replace("{executor_lines}", _executor_lines())
+    if split:
+        text += "\n" + SPLITTING.replace("{max_children}", str(GROOMING_MAX_CHILDREN))
+    return text
+
+
+def system_prompt(
+    registry: Mapping[str, str], board: Sequence[str], *, split: bool = False
+) -> str:
     """The fixed part: instructions, the repositories, the other tasks it may name."""
     repos = "\n".join(
         f"- {name}: {description or '(no description)'}"
@@ -123,7 +158,7 @@ def system_prompt(registry: Mapping[str, str], board: Sequence[str]) -> str:
     )
     tasks = "\n".join(f"- {name}" for name in board) or "- (none)"
     return (
-        f"{instructions()}\n"
+        f"{instructions(split=split)}\n"
         f"The registry: every repository in the fleet.\n{repos}\n\n"
         f"The other open tasks on the board, and any finished task this one "
         f"mentions, marked (done).\n{tasks}\n"

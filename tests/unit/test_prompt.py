@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import get_args
 
 from _fakes import TASK
-from mini_app_polis.api.contract import GroomingExecutor
+from mini_app_polis.api.contract import GROOMING_MAX_CHILDREN, GroomingExecutor
 
-from task_groomer_cog.agent import PROPOSE, TOOLS
+from task_groomer_cog.agent import PROPOSE, TOOLS, Limits, request_body, tools
 from task_groomer_cog.prompt import EXECUTOR_MEANINGS, system_prompt, task_message
 
 
@@ -48,3 +48,57 @@ def test_the_propose_tool_offers_the_contracts_executors() -> None:
     schema = propose["input_schema"]["properties"]["executor"]
     assert schema["enum"] == list(get_args(GroomingExecutor))
     assert "executor" not in propose["input_schema"]["required"]
+
+
+def test_splitting_is_only_in_the_prompt_when_it_is_on() -> None:
+    off = system_prompt({"infra": "Terraform."}, [])
+    on = system_prompt({"infra": "Terraform."}, [], split=True)
+    assert "Splitting." not in off
+    assert "Splitting." in on
+    assert f"At most {GROOMING_MAX_CHILDREN} children" in on
+    assert "blocked_by_siblings, by its position in children, counting from 0" in on
+    assert "give the task itself only its title and body" in on
+    assert "A task already in one of the two shapes is never split" in on
+
+
+def test_the_propose_tool_takes_children_only_when_splitting() -> None:
+    def propose(tools_: list[dict]) -> dict:
+        (tool,) = [t for t in tools_ if t["name"] == PROPOSE]
+        return tool["input_schema"]["properties"]
+
+    assert "children" not in propose(tools())
+    children = propose(tools(split=True))["children"]
+    assert children["maxItems"] == GROOMING_MAX_CHILDREN
+    item = children["items"]
+    assert item["properties"]["executor"]["enum"] == list(get_args(GroomingExecutor))
+    assert set(item["required"]) == {
+        "title",
+        "done_when",
+        "where",
+        "constraints",
+        "effort",
+        "body",
+    }
+    # The cached tool list is the same object when splitting is off.
+    assert tools() is TOOLS
+
+
+def test_the_first_request_follows_the_split_setting() -> None:
+    body = request_body(TASK, {"infra": "x"}, [], Limits(split=True))
+    assert "Splitting." in body["system"][0]["text"]
+    assert any(
+        "children" in t["input_schema"]["properties"]
+        for t in body["tools"]
+        if t["name"] == PROPOSE
+    )
+    assert (
+        "Splitting."
+        not in request_body(TASK, {"infra": "x"}, [], Limits())["system"][0]["text"]
+    )
+
+
+def test_the_split_setting_is_read_from_the_environment(monkeypatch) -> None:
+    monkeypatch.delenv("GROOMER_SPLIT", raising=False)
+    assert Limits.from_env().split is False
+    monkeypatch.setenv("GROOMER_SPLIT", "true")
+    assert Limits.from_env().split is True

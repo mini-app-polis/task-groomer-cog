@@ -61,6 +61,23 @@ reach, and asks only when it cannot tell; task-manager-cog applies the
 proposed executor as a tag. A proposal never changes a tag the task
 already has.
 
+**Splitting.** With `GROOMER_SPLIT=true`, a task that is neither a leaf
+(one repository, one executor) nor a compound task (done when its
+children are) is split. The proposal carries its children, each a leaf
+with its own Done when, Where, Constraints, Effort, body and executor,
+ordered so a child that waits on an earlier one names it by position
+(a shared library before its consumer). The task itself keeps only its
+title and body: task-manager-cog creates the children and rewrites it as
+their compound task. The number of children is capped by the shared
+contract (`GROOMING_MAX_CHILDREN`); a split over the cap, or with a child
+that does not hold, is dropped whole and the task is proposed without it.
+Splitting runs are paid like any other and count against the monthly cap.
+The by-hand run (`--task` without `--dry-run`) lists the children it would
+propose and its cost, and writes nothing; `--dry-run` cannot know the
+children, but with splitting on prices the long run for a split's larger
+proposal. Off by default, so no split is proposed before task-manager-cog
+can apply one.
+
 ## Caps
 
 | Cap | Setting | Default |
@@ -70,6 +87,7 @@ already has.
 | Input tokens per run | `GROOMER_MAX_INPUT_TOKENS` | 150000; past 80% each round asks for the proposal |
 | Output tokens per reply | `GROOMER_MAX_OUTPUT_TOKENS` | 8192 |
 | Spend per calendar month (UTC) | `GROOMER_MONTHLY_CAP_USD` | 20; checked before every request |
+| Splitting | `GROOMER_SPLIT` | off; `true` lets a run split a task into children |
 
 The fixed part of the prompt and the tools are cached, so every round after
 the first reads them at the cache price. A run's cost is recorded with the
