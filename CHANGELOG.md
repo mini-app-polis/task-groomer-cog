@@ -1,3 +1,18 @@
+# [1.3.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.2.4...v1.3.0) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.18.0 ([ba3dc6f](https://github.com/mini-app-polis/task-groomer-cog/commit/ba3dc6f19e8210a8f0574619e83d5bdf7b8bef1d))
+* **deps:** bump miniapppolis-common-utils to 6.19.0 ([b843432](https://github.com/mini-app-polis/task-groomer-cog/commit/b843432915c8760f15a4b313a673731ccaa39550))
+* **estimate:** price the proposal on the last round a capped run gets ([e797684](https://github.com/mini-app-polis/task-groomer-cog/commit/e797684e67c2ae51b32683f9437f6639b6c87231))
+
+
+### Features
+
+* **prompt:** let grooming name a date blocker and propose who does a task ([a2bf940](https://github.com/mini-app-polis/task-groomer-cog/commit/a2bf940d915be2a8e38784ec9cf92aecf8f4bb2b))
+* **prompt:** split a task into child tasks behind GROOMER_SPLIT ([8e559ce](https://github.com/mini-app-polis/task-groomer-cog/commit/8e559ce127b10be17899dcc0d1b2a41d906d09b8))
+
 ## [1.2.4](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.2.3...v1.2.4) (2026-10-23)
 
 
