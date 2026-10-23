@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.3.0...v1.3.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **proposal:** send executor only when the groomer names one ([fa82acf](https://github.com/mini-app-polis/task-groomer-cog/commit/fa82acf2a9b0443bce262250cd344a0ce2dd23a5))
+
 # [1.3.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.2.4...v1.3.0) (2026-10-23)
 
 
