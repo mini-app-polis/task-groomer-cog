@@ -112,7 +112,6 @@ src/task_groomer_cog/
   registry.py   the fleet's repositories, from ecosystem.yaml
   pricing.py    what a run costs
   __main__.py   estimate and run by hand
-  _deadline.py  stop a run before the function timeout
 ```
 
 ## Running locally (DOC-013)

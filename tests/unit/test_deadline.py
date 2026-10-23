@@ -3,8 +3,9 @@ from __future__ import annotations
 import time
 
 import pytest
+from mini_app_polis.lambda_worker import RunOutOfTime, deadline
 
-from task_groomer_cog._deadline import DEADLINE_MARGIN_SECONDS, RunOutOfTime, deadline
+from task_groomer_cog.worker import DEADLINE_MARGIN_SECONDS
 
 
 class _Context:
@@ -27,5 +28,8 @@ def test_too_little_time_refuses_to_start() -> None:
 
 def test_a_run_past_the_margin_is_stopped() -> None:
     ms = (DEADLINE_MARGIN_SECONDS + 0.05) * 1000
-    with pytest.raises(RunOutOfTime), deadline(_Context(ms)):
+    with (
+        pytest.raises(RunOutOfTime),
+        deadline(_Context(ms), margin_seconds=DEADLINE_MARGIN_SECONDS),
+    ):
         time.sleep(1)
