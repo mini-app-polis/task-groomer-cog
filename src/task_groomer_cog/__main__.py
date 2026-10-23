@@ -70,21 +70,27 @@ def estimate(
     """Price a short run and a long one from the first request's size.
 
     Round one writes the prompt to the cache; every later round reads it
-    from the cache and adds what the tools returned since. With ``split``,
-    the long run ends in a split's larger propose call.
+    from the cache and adds what the tools returned since. A run ends in the
+    propose call on its last round, which is the last that fits under the
+    input cap when the cap comes first. With ``split``, the long run ends in
+    a split's larger propose call.
     """
 
     def run(rounds: int, growth: int, output: int, propose: int) -> float:
-        total = 0.0
+        fresh_by_round: list[int] = []
         sent = 0
         for k in range(1, rounds + 1):
             fresh = (k - 1) * growth
             if sent + first + fresh > max_input:
                 break
             sent += first + fresh
+            fresh_by_round.append(fresh)
+        last = len(fresh_by_round)
+        total = 0.0
+        for k, fresh in enumerate(fresh_by_round, start=1):
             usage = pricing.Usage(
                 input_tokens=fresh,
-                output_tokens=output + (propose if k == rounds else 0),
+                output_tokens=output + (propose if k == last else 0),
                 cache_creation_input_tokens=first if k == 1 else 0,
                 cache_read_input_tokens=first if k > 1 else 0,
             )

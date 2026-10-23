@@ -4,6 +4,7 @@ import pytest
 from mini_app_polis.asana import AsanaTaskRecord
 
 from task_groomer_cog import __main__ as cli
+from task_groomer_cog import pricing
 from task_groomer_cog.agent import RunResult
 
 
@@ -49,6 +50,20 @@ def test_the_estimate_prices_a_short_run_below_a_long_one() -> None:
     assert 0 < guess.low_usd < guess.high_usd
     # Round one writes 10K to the cache at $2.50/M: the floor of any run.
     assert guess.low_usd > 10_000 * 2.5 / 1_000_000
+
+
+def test_a_run_cut_short_by_the_input_cap_still_ends_in_its_proposal() -> None:
+    # Room for one round only: the long run is that round, with the proposal.
+    guess = cli.estimate(10_000, "claude-sonnet-5-5", 10_000)
+    _, _, output = cli.LONG
+    one_round = pricing.Usage(
+        input_tokens=0,
+        output_tokens=output + cli.PROPOSE_OUTPUT,
+        cache_creation_input_tokens=10_000,
+    )
+    assert guess.high_usd == pytest.approx(pricing.cost("claude-sonnet-5-5", one_round))
+    split = cli.estimate(10_000, "claude-sonnet-5-5", 10_000, split=True)
+    assert split.high_usd > guess.high_usd
 
 
 def test_the_estimate_stops_at_the_input_cap() -> None:
