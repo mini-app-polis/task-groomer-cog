@@ -48,10 +48,10 @@ from typing import Any
 
 import httpx
 from mini_app_polis import logger as logger_mod
-from mini_app_polis.api.contract import GroomingTask
+from mini_app_polis.api.contract import GROOMING_MAX_CHILDREN, GroomingTask
 
 from . import pricing
-from .prompt import system_prompt, task_message
+from .prompt import executors, system_prompt, task_message
 from .repos import RepoError, Repos
 
 log = logger_mod.get_logger()
@@ -144,6 +144,7 @@ TOOLS: list[dict[str, Any]] = [
                 "effort": {"type": "string", "enum": ["S", "M", "L"]},
                 "blocked_by": {"type": "string"},
                 "body": {"type": "string"},
+                "executor": {"type": "string", "enum": list(executors())},
                 "questions": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["title", "questions"],
@@ -152,6 +153,53 @@ TOOLS: list[dict[str, Any]] = [
         "cache_control": {"type": "ephemeral"},
     },
 ]
+
+
+#: One child task in a split, as the propose tool takes it.
+CHILD_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "done_when": {"type": "string"},
+        "where": {"type": "string"},
+        "constraints": {"type": "string"},
+        "effort": {"type": "string", "enum": ["S", "M", "L"]},
+        "executor": {"type": "string", "enum": list(executors())},
+        "blocked_by_siblings": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 0},
+            "description": "Earlier children this one waits for, by position from 0.",
+        },
+        "blocked_by": {"type": "string"},
+        "body": {"type": "string"},
+    },
+    "required": ["title", "done_when", "where", "constraints", "effort", "body"],
+}
+
+
+def tools(*, split: bool = False) -> list[dict[str, Any]]:
+    """The tools a run is given; ``split`` lets the propose call carry children."""
+    if not split:
+        return TOOLS
+    *others, propose = TOOLS
+    schema = propose["input_schema"]
+    return [
+        *others,
+        {
+            **propose,
+            "input_schema": {
+                **schema,
+                "properties": {
+                    **schema["properties"],
+                    "children": {
+                        "type": "array",
+                        "items": CHILD_SCHEMA,
+                        "maxItems": GROOMING_MAX_CHILDREN,
+                    },
+                },
+            },
+        },
+    ]
 
 
 class GroomingFailed(RuntimeError):
@@ -182,6 +230,8 @@ class Limits:
     max_input_tokens: int = 150_000
     max_output_tokens: int = 8192
     monthly_cap_usd: float = 20.0
+    #: Whether a run may split a task into children (``GROOMER_SPLIT``).
+    split: bool = False
 
     @classmethod
     def from_env(cls) -> Limits:
@@ -197,6 +247,7 @@ class Limits:
             max_input_tokens=int(number("GROOMER_MAX_INPUT_TOKENS", 150_000)),
             max_output_tokens=int(number("GROOMER_MAX_OUTPUT_TOKENS", 8192)),
             monthly_cap_usd=number("GROOMER_MONTHLY_CAP_USD", 20.0),
+            split=(os.environ.get("GROOMER_SPLIT") or "").strip().lower() == "true",
         )
 
 
@@ -236,11 +287,11 @@ def request_body(
         "system": [
             {
                 "type": "text",
-                "text": system_prompt(registry, board),
+                "text": system_prompt(registry, board, split=limits.split),
                 "cache_control": {"type": "ephemeral"},
             }
         ],
-        "tools": TOOLS,
+        "tools": tools(split=limits.split),
         "messages": [{"role": "user", "content": task_message(task)}],
     }
 

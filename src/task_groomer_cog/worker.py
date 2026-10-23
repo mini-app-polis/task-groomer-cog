@@ -145,13 +145,18 @@ def groom_task(
 
         _record(api, task.task_gid, result.model, result.usage, result.cost_usd)
         proposal = build(
-            task, result.proposal, model=result.model, cost_usd=result.cost_usd
+            task,
+            result.proposal,
+            model=result.model,
+            cost_usd=result.cost_usd,
+            split=limits.split,
         )
         api.submit_grooming_proposal(proposal)
 
         report.count("rounds", result.rounds)
         report.count("cost_usd", f"{result.cost_usd:.4f}")
         report.count("questions", len(proposal.questions))
+        report.count("children", len(proposal.children))
         report.updated("grooming proposal", f"{label} · {proposal.title}")
 
 

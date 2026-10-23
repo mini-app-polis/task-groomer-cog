@@ -7,14 +7,50 @@ reads it from the cache. The task itself is the first user message.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
+from typing import get_args
 
-from mini_app_polis.api.contract import GroomingTask
+from mini_app_polis.api.contract import (
+    GROOMING_MAX_CHILDREN,
+    GroomingExecutor,
+    GroomingTask,
+)
+
+#: Who can do a task, by its tag. The names are the contract's; what each
+#: means is said here, for the model; a test holds the two to the same names.
+EXECUTOR_MEANINGS: dict[str, str] = {
+    "cowork": (
+        "needs a working session with the board's owner: his machine, the "
+        "board itself, Railway, Discord, Doppler, provider consoles, or his "
+        "decisions along the way"
+    ),
+    "person": (
+        "only the owner can do it: consoles behind his login, his accounts, "
+        "physical checks"
+    ),
+}
+
+
+def executors() -> tuple[str, ...]:
+    """The executor names a task can be tagged with, from the contract."""
+    return get_args(GroomingExecutor)
+
+
+def executor_of(tags: Collection[str]) -> str | None:
+    """The executor a task is tagged with, or None for the agent."""
+    names = executors()
+    return next((t.lower() for t in tags if t.lower() in names), None)
+
+
+def _executor_lines() -> str:
+    return "\n".join(f"  - {name}: {EXECUTOR_MEANINGS[name]}." for name in executors())
+
 
 INSTRUCTIONS = """\
-You groom tasks on the MiniAppPolis task board. Every task on the board will \
-be worked by an agent that has only the task and the repositories it names, \
-so a task is ready when an agent could finish it without asking anything. \
+You groom tasks on the MiniAppPolis task board. Most tasks on the board are \
+worked by an agent that has only the task and the repositories it names, and \
+every task is held to the bar that agent needs: a task is ready when it \
+could be finished without asking anything. \
 You make a task ready by working out what it should say, from what it says \
 now and from the code it is about. You never change the board yourself: \
 you propose, by calling the propose tool exactly once, and the board's \
@@ -37,11 +73,26 @@ several files), or L (more than one pull request; implementing an L task \
 means splitting it into subtasks, so say in done_when what the subtasks \
 must cover).
 - blocked_by: the ids of other open tasks that must be finished first, from \
-the board list below, comma separated, or "None". Never a task marked (done).
+the board list below, and any date the task waits for, as YYYY-MM-DD (a UTC \
+day), comma separated, or "None". Never a task marked (done). A task that \
+can only be done after a date (a scheduled run, an event) gets that date \
+here; do not ask how to express the wait.
 - body: why the task exists, in a few sentences, keeping everything the \
 task already says that matters, and links to what the worker will need. \
 Write for someone who has not seen the task before.
+- executor: who can do the task, when it is not the agent (see below). \
+Leave it out for a task the agent can do.
 - questions: what only the board's owner can answer.
+
+Who does a task. A task's executor is named by a tag on it. No tag means the agent: a headless run in GitHub Actions \
+that has only the task and the repositories it names, and can open a pull \
+request in one of them. The tags are:
+{executor_lines}
+- If the task already has an executor tag, groom it for that executor. Do \
+not ask who does the work or whether a worker can reach what it needs, and \
+do not propose an executor.
+- If it has none and the work needs what the agent cannot reach, propose \
+the executor by what the task must reach. Ask only when you cannot tell.
 
 How to work:
 
@@ -63,7 +114,43 @@ settled: do not ask whether it exists or is done.
 """
 
 
-def system_prompt(registry: Mapping[str, str], board: Sequence[str]) -> str:
+SPLITTING = """\
+Splitting. A ready task has one of two shapes. A leaf names at most one \
+repository in where and has one executor. A compound task has no work of \
+its own: it is done when its children are, and waits on all of them.
+- If the task is neither, because its work spans more than one repository \
+or more than one executor, propose children instead of filling its own \
+done_when, where, constraints, effort and blocked_by. Each child is a leaf \
+with its own title, done_when, where (one repository; none only for a \
+cowork or person child with no repository), constraints, effort and body, \
+and an executor when it is not the agent's.
+- Put the children in the order they can be done. A child that must wait \
+for an earlier one (a shared library released before its consumer) names \
+it in blocked_by_siblings, by its position in children, counting from 0. \
+Existing tasks and dates a child waits for go in its blocked_by.
+- With children, give the task itself only its title and body. It becomes \
+their compound task: the board's manager writes its Done when and Blocked \
+by from the children once it has created them.
+- At most {max_children} children. If the work needs more, do not split: \
+ask how to divide it.
+- A task already in one of the two shapes is never split.
+"""
+
+
+def instructions(*, split: bool = False) -> str:
+    """The board's rules, with the executors the contract names.
+
+    ``split`` adds the rules for splitting a task into children.
+    """
+    text = INSTRUCTIONS.replace("{executor_lines}", _executor_lines())
+    if split:
+        text += "\n" + SPLITTING.replace("{max_children}", str(GROOMING_MAX_CHILDREN))
+    return text
+
+
+def system_prompt(
+    registry: Mapping[str, str], board: Sequence[str], *, split: bool = False
+) -> str:
     """The fixed part: instructions, the repositories, the other tasks it may name."""
     repos = "\n".join(
         f"- {name}: {description or '(no description)'}"
@@ -71,7 +158,7 @@ def system_prompt(registry: Mapping[str, str], board: Sequence[str]) -> str:
     )
     tasks = "\n".join(f"- {name}" for name in board) or "- (none)"
     return (
-        f"{INSTRUCTIONS}\n"
+        f"{instructions(split=split)}\n"
         f"The registry: every repository in the fleet.\n{repos}\n\n"
         f"The other open tasks on the board, and any finished task this one "
         f"mentions, marked (done).\n{tasks}\n"
@@ -82,11 +169,18 @@ def task_message(task: GroomingTask) -> str:
     """The first user message: the task as it stands."""
     problems = "\n".join(f"- {p}" for p in task.problems) or "- (none)"
     tags = ", ".join(task.tags) or "(none)"
+    executor = executor_of(task.tags)
+    who = (
+        f"{executor} (its tag; groom it for that executor)"
+        if executor
+        else "the agent (no executor tag)"
+    )
     message = (
         f"Groom this task.\n\n"
         f"Name: {task.name}\n"
         f"Column: {task.section or '(unknown)'}\n"
-        f"Tags: {tags}\n\n"
+        f"Tags: {tags}\n"
+        f"Executor: {who}\n\n"
         f"Body:\n{task.notes.strip() or '(empty)'}\n\n"
         f"What the board's linter found missing:\n{problems}\n"
     )
