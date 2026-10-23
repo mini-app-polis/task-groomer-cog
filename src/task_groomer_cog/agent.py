@@ -33,7 +33,7 @@ task waits for its next change.
   GROOMER_MODEL              the model; default claude-sonnet-5-5
   GROOMER_MAX_ROUNDS         default 8
   GROOMER_MAX_INPUT_TOKENS   default 150000
-  GROOMER_MAX_OUTPUT_TOKENS  default 8192
+  GROOMER_MAX_OUTPUT_TOKENS  default 16384
   GROOMER_MONTHLY_CAP_USD    default 20
 """
 
@@ -228,7 +228,7 @@ class Limits:
     model: str = DEFAULT_MODEL
     max_rounds: int = 8
     max_input_tokens: int = 150_000
-    max_output_tokens: int = 8192
+    max_output_tokens: int = 16384
     monthly_cap_usd: float = 20.0
     #: Whether a run may split a task into children (``GROOMER_SPLIT``).
     split: bool = False
@@ -245,7 +245,7 @@ class Limits:
             model=(os.environ.get("GROOMER_MODEL") or "").strip() or DEFAULT_MODEL,
             max_rounds=int(number("GROOMER_MAX_ROUNDS", 8)),
             max_input_tokens=int(number("GROOMER_MAX_INPUT_TOKENS", 150_000)),
-            max_output_tokens=int(number("GROOMER_MAX_OUTPUT_TOKENS", 8192)),
+            max_output_tokens=int(number("GROOMER_MAX_OUTPUT_TOKENS", 16384)),
             monthly_cap_usd=number("GROOMER_MONTHLY_CAP_USD", 20.0),
             split=(os.environ.get("GROOMER_SPLIT") or "").strip().lower() == "true",
         )
