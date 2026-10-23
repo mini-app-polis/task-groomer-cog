@@ -22,7 +22,6 @@ lands in the dead-letter queue.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
@@ -36,12 +35,19 @@ from mini_app_polis.api.contract import (
     GroomingRunCreate,
     GroomingRunRecorded,
     GroomingSpend,
+    TaskGroomMessage,
 )
+from mini_app_polis.lambda_worker import (
+    UnprocessableMessage,
+    all_failed,
+    deadline,
+    process_records,
+)
+from mini_app_polis.lambda_worker import parse_message as parse_queue_message
 from mini_app_polis.pipeline_status import post_run_finding, run_report
 from mini_app_polis.sentry import init_sentry
-from pydantic import ValidationError
 
-from ._deadline import deadline
+from ._version import __version__
 from .agent import BudgetSpent, GroomingFailed, Limits, groom
 from .proposal import build
 from .registry import load_registry
@@ -55,15 +61,11 @@ FLOW_NAME = "groom-task"
 #: This cog's name to the API, which picks its key.
 MACHINE_NAME = "task-groomer-cog"
 
-#: Must match api-kaianolevine-com's grooming dispatch.
-MESSAGE_VERSION = 1
-TYPE_GROOM = "task.groom"
+#: How long before the function's timeout a run is stopped, leaving room for
+#: the run report and the handler's return.
+DEADLINE_MARGIN_SECONDS = 20
 
 init_sentry(REPO)
-
-
-class UnprocessableMessage(RuntimeError):
-    """The message cannot be handled by this consumer, ever."""
 
 
 class GroomingApi(Protocol):
@@ -90,23 +92,7 @@ def _api() -> GroomingApi:
 
 def parse_message(body: str) -> GroomingJobRequest:
     """The job a message carries. Raises UnprocessableMessage otherwise."""
-    try:
-        message = json.loads(body)
-    except ValueError as exc:
-        raise UnprocessableMessage(f"body is not JSON: {exc}") from exc
-    if not isinstance(message, dict):
-        raise UnprocessableMessage("body is not an object")
-    if message.get("version") != MESSAGE_VERSION:
-        raise UnprocessableMessage(
-            f"message version {message.get('version')!r}, "
-            f"this consumer speaks {MESSAGE_VERSION}"
-        )
-    if message.get("type") != TYPE_GROOM:
-        raise UnprocessableMessage(f"unknown message type {message.get('type')!r}")
-    try:
-        return GroomingJobRequest.model_validate(message.get("payload"))
-    except ValidationError as exc:
-        raise UnprocessableMessage(f"payload is not a grooming job: {exc}") from exc
+    return parse_queue_message(body, TaskGroomMessage).payload
 
 
 def groom_task(
@@ -122,7 +108,7 @@ def groom_task(
     task = job.task
     label = task.task_id or task.task_gid
     limits = Limits.from_env()
-    with run_report(FLOW_NAME, repo=REPO, run_id=run_id) as report:
+    with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         api = api_factory()
         registry = registry_loader()
         try:
@@ -193,6 +179,7 @@ def _report_unprocessable(exc: BaseException, run_id: str) -> None:
             repo=REPO,
             source="queue_consumer",
             run_id=run_id,
+            version=__version__,
         )
     except Exception:  # noqa: BLE001 — the notification is not the job
         log.exception("worker: could not report the unprocessable message")
@@ -206,37 +193,33 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     that crashed outside the run's own handling ends, rather than paying
     again.
     """
-    records = event.get("Records", []) if isinstance(event, dict) else []
     try:
         load_secrets(refresh=True)
     except Exception:  # noqa: BLE001 — nothing can run without its settings
         log.exception("worker: could not refresh settings from SSM")
-        return {
-            "batchItemFailures": [
-                {"itemIdentifier": str(r.get("messageId") or "")} for r in records
-            ]
-        }
+        return all_failed(event)
 
-    failures: list[dict[str, str]] = []
-    for record in records:
+    def handle(record: dict[str, Any]) -> None:
         message_id = str(record.get("messageId") or "")
-        body = record.get("body") or ""
         attempt = (record.get("attributes") or {}).get("ApproximateReceiveCount", "?")
         with timing.invocation(
             cog="task-groomer", source="grooming", attempt=attempt
         ) as timed:
             try:
-                with deadline(context):
-                    process_message(body, run_id=message_id)
-            except UnprocessableMessage as exc:
+                with deadline(context, margin_seconds=DEADLINE_MARGIN_SECONDS):
+                    process_message(record.get("body") or "", run_id=message_id)
+            except UnprocessableMessage:
                 timed.label(outcome="unprocessable")
-                log.error("worker: unprocessable message: %s", exc)
-                _report_unprocessable(exc, message_id)
-                failures.append({"itemIdentifier": message_id})
-            except Exception:  # noqa: BLE001 — reported by the run report
+                raise
+            except BaseException:
                 timed.label(outcome="failed")
-                log.exception("worker: run failed")
-                failures.append({"itemIdentifier": message_id})
-            else:
-                timed.label(outcome="ok")
-    return {"batchItemFailures": failures}
+                raise
+            timed.label(outcome="ok")
+
+    return process_records(
+        event,
+        handle,
+        on_unprocessable=lambda exc, record: _report_unprocessable(
+            exc, str(record.get("messageId") or "")
+        ),
+    )

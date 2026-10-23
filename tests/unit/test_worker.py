@@ -78,7 +78,7 @@ def _run(api: FakeApi, outcome: Any) -> None:
         ("[1]", "not an object"),
         (_body(version=2), "version"),
         (_body(type="task.create"), "message type"),
-        (_body(payload={}), "not a grooming job"),
+        (_body(payload={}), "not a valid task.groom"),
     ],
 )
 def test_unreadable_messages_are_refused(body: str, reason: str) -> None:
