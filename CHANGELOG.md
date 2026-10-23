@@ -1,3 +1,15 @@
+# [1.4.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.3.2...v1.4.0) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** require miniapppolis-common-utils 6.21.0 for 25-child proposals ([b278440](https://github.com/mini-app-polis/task-groomer-cog/commit/b278440996aac2f357d8f11cdd9cee56dc92b096))
+
+
+### Features
+
+* **agent:** default the reply limit to 16384 tokens so a 25-child split fits ([931ed7d](https://github.com/mini-app-polis/task-groomer-cog/commit/931ed7d424692f3ea146e6a1a11f44bb3a47556d))
+
 ## [1.3.2](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.3.1...v1.3.2) (2026-10-23)
 
 
