@@ -39,6 +39,28 @@ repository without one), in memory. It ends with one `propose` call: the
 title, Done when, Where, Constraints, Effort, Blocked by, a body, and
 questions for anything it could not settle from the task and the code.
 
+**Blocked by** may name dates as well as tasks: a task that can only be
+done after a date (a scheduled run, an event) is given the date
+(`YYYY-MM-DD`, a UTC day) rather than a question about how to express the
+wait. task-manager-cog holds it out of Ready until that day.
+
+**Who does a task.** A task's executor is a tag on it, named in the
+shared contract (`mini_app_polis.api.contract.GroomingExecutor`):
+
+- no tag: the agent, a headless run that has only the task and the
+  repositories it names;
+- `cowork`: a working session with the owner (his machine, the board,
+  Railway, Discord, Doppler, consoles, his decisions);
+- `person`: the owner alone (consoles behind his login, accounts,
+  physical checks).
+
+A task already tagged is groomed for that executor, and the groomer does
+not ask who does the work. For an untagged task that needs what the agent
+cannot reach, it proposes `cowork` or `person` by what the task must
+reach, and asks only when it cannot tell; task-manager-cog applies the
+proposed executor as a tag. A proposal never changes a tag the task
+already has.
+
 ## Caps
 
 | Cap | Setting | Default |

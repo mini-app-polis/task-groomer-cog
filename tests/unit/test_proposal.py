@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from _fakes import TASK
 
 from task_groomer_cog.proposal import build
@@ -37,3 +38,23 @@ def test_what_the_model_got_wrong_is_dropped_or_cut() -> None:
     assert proposal.effort is None
     assert proposal.body is not None and len(proposal.body) == 20_000
     assert proposal.questions == [f"q{i}" for i in range(10)]
+
+
+@pytest.mark.parametrize("executor", ["cowork", "person"])
+def test_a_proposal_carries_the_executor_the_model_named(executor: str) -> None:
+    proposal = build(TASK, {"title": "T", "executor": executor}, model="m", cost_usd=0)
+    assert proposal.executor == executor
+
+
+@pytest.mark.parametrize("executor", [None, "agent", "Cowork", 3])
+def test_an_executor_off_the_contract_is_dropped(executor: object) -> None:
+    proposal = build(TASK, {"title": "T", "executor": executor}, model="m", cost_usd=0)
+    assert proposal.executor is None
+
+
+def test_a_task_already_tagged_keeps_its_tag() -> None:
+    tagged = TASK.model_copy(update={"tags": ["cowork"]})
+    proposal = build(
+        tagged, {"title": "T", "executor": "person"}, model="m", cost_usd=0
+    )
+    assert proposal.executor is None

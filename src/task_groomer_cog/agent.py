@@ -51,7 +51,7 @@ from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import GroomingTask
 
 from . import pricing
-from .prompt import system_prompt, task_message
+from .prompt import executors, system_prompt, task_message
 from .repos import RepoError, Repos
 
 log = logger_mod.get_logger()
@@ -144,6 +144,7 @@ TOOLS: list[dict[str, Any]] = [
                 "effort": {"type": "string", "enum": ["S", "M", "L"]},
                 "blocked_by": {"type": "string"},
                 "body": {"type": "string"},
+                "executor": {"type": "string", "enum": list(executors())},
                 "questions": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["title", "questions"],

@@ -13,6 +13,8 @@ from typing import Any
 
 from mini_app_polis.api.contract import GroomingProposal, GroomingTask
 
+from .prompt import executor_of, executors
+
 _LIMITS = {
     "title": 300,
     "done_when": 5000,
@@ -54,6 +56,11 @@ def build(
         )
         if q
     ][:MAX_QUESTIONS]
+    # A task already tagged keeps its tag: the groomer only names an
+    # executor for a task that has none.
+    executor = proposed.get("executor")
+    if executor not in executors() or executor_of(task.tags) is not None:
+        executor = None
     return GroomingProposal(
         task_gid=task.task_gid,
         fingerprint=task.fingerprint,
@@ -64,6 +71,7 @@ def build(
         effort=effort if effort in ("S", "M", "L") else None,
         blocked_by=_text(proposed.get("blocked_by"), _LIMITS["blocked_by"]),
         body=_text(proposed.get("body"), _LIMITS["body"]),
+        executor=executor,
         questions=questions,
         model=model,
         cost_usd=round(cost_usd, 6),
