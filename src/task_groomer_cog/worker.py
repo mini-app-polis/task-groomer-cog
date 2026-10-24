@@ -217,10 +217,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 raise
             timed.label(outcome="ok")
 
-    return process_records(
-        event,
-        handle,
-        on_unprocessable=lambda exc, record: _report_unprocessable(
-            exc, str(record.get("messageId") or "")
-        ),
-    )
+    def on_unprocessable(exc: UnprocessableMessage, record: dict[str, Any]) -> None:
+        # Once, on the first receive: a duplicate delivery fails the same way,
+        # and the dead-letter queue it lands in has an alarm of its own.
+        attempt = str(
+            (record.get("attributes") or {}).get("ApproximateReceiveCount", "?")
+        )
+        if attempt in ("1", "?"):
+            _report_unprocessable(exc, str(record.get("messageId") or ""))
+
+    return process_records(event, handle, on_unprocessable=on_unprocessable)
