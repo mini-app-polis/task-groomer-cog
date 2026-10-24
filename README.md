@@ -15,7 +15,7 @@ See [ADR-001](docs/decisions/ADR-001-propose-never-write.md).
 ```
 task-manager-cog sweep ──POST /v1/tasks/groomings/jobs──► api-kaianolevine-com
                                                                 │
-                                                     task-groomer-jobs
+                                                    task-groomer queue
                                                                 ▼
                                                    task-groomer-cog (Lambda)
                                                      1. check the month's spend
@@ -27,7 +27,7 @@ task-manager-cog sweep ──POST /v1/tasks/groomings/jobs──► api-kaianole
                                                                 │
            POST /v1/tasks/groomings/proposals ◄─────────────────┘
                                 │
-                   task-manager-jobs.fifo ──► task-manager-cog applies it
+                   task-manager queue ──► task-manager-cog applies it
 ```
 
 The model is given the task, the board's definition of ready, every
@@ -156,7 +156,6 @@ uv run mypy src/
 ## Deployment
 
 A release on `main` deploys the Lambda through the shared `lambda-deploy`
-workflow. The function, queue, dead-letter queue and alarms are
-`module "task_groomer"` in `mini-app-polis/infra`; the repository variables
-`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION` and `AWS_FUNCTION_NAME` come from that
-stack's `cogs` output.
+workflow. The function, queue, dead-letter queue and alarms are declared in
+`mini-app-polis/infra`, which also supplies the repository variables
+`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION` and `AWS_FUNCTION_NAME`.

@@ -1,7 +1,7 @@
 [project]
 name = "task-groomer-cog"
 dynamic = ["version"]
-description = "Grooms tasks on the board: reads a task and the code it names, and proposes what it should say so an agent can work it. Runs as the task-groomer-jobs Lambda worker; never writes to the board."
+description = "Grooms tasks on the board: reads a task and the code it names, and proposes what it should say so an agent can work it. Runs as a Lambda worker behind its own queue; never writes to the board."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -50,7 +50,7 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "tests/unit"]
-testpaths = ["tests/unit"]
+testpaths = ["tests/unit", "tests/integration"]
 addopts = "--cov=task_groomer_cog --cov-report=term-missing"
 
 [tool.mypy]
