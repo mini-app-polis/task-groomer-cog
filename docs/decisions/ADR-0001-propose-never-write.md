@@ -1,4 +1,4 @@
-# ADR-001: Propose, never write
+# ADR-0001: Propose, never write
 
 ## Status
 
@@ -12,7 +12,7 @@ one-line idea, a detected failure with a templated title, a task written in
 a hurry. Making them ready is judgment work, done by a model reading the task
 and the code, and it costs money every time.
 
-task-manager-cog is the one writer to the board (task-manager-cog ADR-001),
+task-manager-cog is the one writer to the board (task-manager-cog ADR-0001),
 and it makes no model calls, so its hourly sweep stays free. The judgment
 has to happen somewhere else.
 
