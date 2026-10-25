@@ -8,7 +8,7 @@ has only the task and the repositories it names, so a task is ready when an
 agent could finish it without asking. This cog reads a task that is not
 ready, looks at the code it is about, and proposes what the task should
 say. It never writes to the board: task-manager-cog applies the proposal.
-See [ADR-001](docs/decisions/ADR-001-propose-never-write.md).
+See [ADR-0001](docs/decisions/ADR-0001-propose-never-write.md).
 
 ## Flow
 
