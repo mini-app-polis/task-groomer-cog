@@ -1,3 +1,11 @@
+## [1.5.1](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.5.0...v1.5.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.24.0 ([caafefa](https://github.com/mini-app-polis/task-groomer-cog/commit/caafefa742d6f66a5d265d6141c7e4ea3b1992dc))
+* **deps:** bump miniapppolis-common-utils to 6.25.0 ([89ecd92](https://github.com/mini-app-polis/task-groomer-cog/commit/89ecd928b19de07519233e607709ee67591456d1))
+
 # [1.5.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.4.3...v1.5.0) (2026-10-25)
 
 
