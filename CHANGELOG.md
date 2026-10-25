@@ -1,3 +1,15 @@
+# [1.5.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.4.3...v1.5.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.23.0 ([1f4bb82](https://github.com/mini-app-polis/task-groomer-cog/commit/1f4bb821b31ab5641dff51011d25c60873c0f5fa))
+
+
+### Features
+
+* **worker:** claim a grooming job before the model call and skip a duplicate delivery ([947e00e](https://github.com/mini-app-polis/task-groomer-cog/commit/947e00e07b57bfb20722ea7bb26726bb564071f0))
+
 ## [1.4.3](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.4.2...v1.4.3) (2026-10-25)
 
 
