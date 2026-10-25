@@ -205,6 +205,10 @@ class FakeApi:
     proposals: list[dict[str, Any]] = field(default_factory=list)
     attempts: dict[str, int] = field(default_factory=dict)
     auth: list[str] = field(default_factory=list)
+    #: Claims by (task_gid, fingerprint): "claimed" or "released", as the
+    #: API's unique key holds them.
+    claims: dict[tuple[str, str], str] = field(default_factory=dict)
+    releases: list[dict[str, Any]] = field(default_factory=list)
     _faults: dict[str, list[int]] = field(default_factory=dict)
 
     def fail(self, path: str, status: int, *, times: int = 1) -> None:
@@ -222,6 +226,28 @@ class FakeApi:
         return httpx.Response(
             200, json={"data": data, "meta": {"count": 1, "total": 1, "version": "t"}}
         )
+
+    def claim(self, request: httpx.Request) -> httpx.Response:
+        self.auth.append(request.headers.get("Authorization", ""))
+        body = json.loads(request.content)
+        failed = self._fault("/v1/tasks/groomings/claims")
+        if failed:
+            return failed
+        key = (body["task_gid"], body["fingerprint"])
+        won = self.claims.get(key) in (None, "released")
+        if won:
+            self.claims[key] = "claimed"
+        return self._ok({**body, "claimed": won})
+
+    def release(self, request: httpx.Request) -> httpx.Response:
+        self.auth.append(request.headers.get("Authorization", ""))
+        body = json.loads(request.content)
+        self.releases.append(body)
+        key = (body["task_gid"], body["fingerprint"])
+        held = self.claims.get(key) == "claimed"
+        if held:
+            self.claims[key] = "released"
+        return self._ok({**body, "released": held})
 
     def spend(self, request: httpx.Request) -> httpx.Response:
         self.auth.append(request.headers.get("Authorization", ""))

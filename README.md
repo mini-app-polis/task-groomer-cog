@@ -96,9 +96,15 @@ total (`GET /v1/tasks/groomings/spend`) is what the cap is checked
 against. A model missing from `pricing.py` is refused: it could not be
 capped.
 
-There are no automatic retries. The queue delivers each job once, so a run
-is never paid for twice; a run that fails is reported and the task is
-groomed again when it next changes.
+There are no automatic retries: the queue allows each job one receive, and
+a run that fails is reported and the task is groomed again when it next
+changes. SQS can still deliver a message twice, so before the model is
+called a run claims the task and its content's fingerprint
+(`POST /v1/tasks/groomings/claims`). Only the delivery that wins the claim
+is paid for; another is acknowledged with nothing run. A run that fails gives
+its claim back (`POST /v1/tasks/groomings/claims/release`) so the next send
+can groom the same content, and if the claim cannot be asked for, the job is
+dropped rather than run unclaimed.
 
 ## Layout
 

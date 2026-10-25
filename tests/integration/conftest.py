@@ -73,6 +73,10 @@ def world() -> Iterator[tuple[FakeModel, FakeGitHub, FakeApi]]:
             router.get(GITHUB_ZIPBALL.format(repo=repo, branch="dev")).mock(
                 side_effect=github.handler(repo)
             )
+        router.post(f"{API_BASE}/v1/tasks/groomings/claims").mock(side_effect=api.claim)
+        router.post(f"{API_BASE}/v1/tasks/groomings/claims/release").mock(
+            side_effect=api.release
+        )
         router.get(f"{API_BASE}/v1/tasks/groomings/spend").mock(side_effect=api.spend)
         router.post(f"{API_BASE}/v1/tasks/groomings/runs").mock(
             side_effect=api.record_run
