@@ -17,6 +17,16 @@ the queue delivers each message once (``max_receive_count = 1`` in
 mini-app-polis/infra) and a job that fails is reported and dropped. The
 task is groomed again when it next changes.
 
+**One paid run per job, even when SQS delivers it twice.** Before the model
+is called, the run claims the task and the fingerprint of the content it was
+sent for (``POST /v1/tasks/groomings/claims``). The API's unique key on that
+pair means one delivery wins; another, on this container or another, finds
+the claim held and is acknowledged with nothing paid, recorded or proposed.
+A run that fails gives its claim back
+(``POST /v1/tasks/groomings/claims/release``), so the next send of the same
+content can claim it; a run that succeeds keeps it. If the claim cannot be
+asked for at all, the job is reported and dropped, never run unclaimed.
+
 **An unrecognised message is a producer bug.** It is reported once and
 lands in the dead-letter queue.
 """
@@ -30,6 +40,9 @@ from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api import KaianoApiClient
 from mini_app_polis.api.contract import (
+    GroomingClaimReleased,
+    GroomingClaimRequest,
+    GroomingClaimResult,
     GroomingJobRequest,
     GroomingProposal,
     GroomingProposalAccepted,
@@ -72,6 +85,16 @@ init_sentry(REPO)
 class GroomingApi(Protocol):
     """The API calls a run makes: the API, or a fake in a test."""
 
+    def claim_grooming(self, payload: GroomingClaimRequest) -> GroomingClaimResult:
+        """Claim one job before the model is called; false when already held."""
+        ...
+
+    def release_grooming_claim(
+        self, payload: GroomingClaimRequest
+    ) -> GroomingClaimReleased:
+        """Give a claim back after a run that failed."""
+        ...
+
     def grooming_spend(self) -> GroomingSpend:
         """This month's paid grooming so far, for the cap."""
         ...
@@ -105,46 +128,103 @@ def groom_task(
     repos_factory: Callable[[Mapping[str, str]], Repos] = Repos,
     groom_fn: Callable[..., Any] = groom,
 ) -> None:
-    """Groom one task and hand the proposal back. Never redelivered."""
+    """Groom one task and hand the proposal back. Never redelivered.
+
+    The job is claimed first, so a duplicate delivery pays for nothing, and
+    the claim is given back if the run fails.
+    """
     task = job.task
     label = task.task_id or task.task_gid
     limits = Limits.from_env()
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         api = api_factory()
-        registry = registry_loader()
-        try:
-            result = groom_fn(
-                task,
-                registry=registry,
-                board=job.board,
-                repos=repos_factory(registry),
-                spent_this_month=lambda: api.grooming_spend().cost_usd,
-                limits=limits,
-            )
-        except BudgetSpent as exc:
-            _record(api, task.task_gid, limits.model, exc.usage, exc.cost_usd)
-            report.issue("grooming budget spent", label, detail=str(exc))
-            return
-        except GroomingFailed as exc:
-            _record(api, task.task_gid, limits.model, exc.usage, exc.cost_usd)
-            report.issue("grooming run failed", label, detail=str(exc))
-            return
-
-        _record(api, task.task_gid, result.model, result.usage, result.cost_usd)
-        proposal = build(
-            task,
-            result.proposal,
-            model=result.model,
-            cost_usd=result.cost_usd,
-            split=limits.split,
+        claim = GroomingClaimRequest(
+            task_gid=task.task_gid, fingerprint=task.fingerprint
         )
-        api.submit_grooming_proposal(proposal)
+        try:
+            claimed = api.claim_grooming(claim).claimed
+        except Exception as exc:  # noqa: BLE001 — never groom unclaimed
+            report.issue("grooming claim failed", label, detail=str(exc))
+            return
+        if not claimed:
+            report.note("already claimed: a duplicate delivery", label)
+            return
 
-        report.count("rounds", result.rounds)
-        report.count("cost_usd", f"{result.cost_usd:.4f}")
-        report.count("questions", len(proposal.questions))
-        report.count("children", len(proposal.children))
-        report.updated("grooming proposal", f"{label} · {proposal.title}")
+        try:
+            _groom_claimed(
+                api,
+                job,
+                claim,
+                report=report,
+                label=label,
+                limits=limits,
+                registry_loader=registry_loader,
+                repos_factory=repos_factory,
+                groom_fn=groom_fn,
+            )
+        except BaseException:
+            _release(api, claim)
+            raise
+
+
+def _groom_claimed(
+    api: GroomingApi,
+    job: GroomingJobRequest,
+    claim: GroomingClaimRequest,
+    *,
+    report: Any,
+    label: str,
+    limits: Limits,
+    registry_loader: Callable[[], Mapping[str, str]],
+    repos_factory: Callable[[Mapping[str, str]], Repos],
+    groom_fn: Callable[..., Any],
+) -> None:
+    """The paid run, once the job is claimed. A run that fails releases it."""
+    task = job.task
+    registry = registry_loader()
+    try:
+        result = groom_fn(
+            task,
+            registry=registry,
+            board=job.board,
+            repos=repos_factory(registry),
+            spent_this_month=lambda: api.grooming_spend().cost_usd,
+            limits=limits,
+        )
+    except BudgetSpent as exc:
+        _record(api, task.task_gid, limits.model, exc.usage, exc.cost_usd)
+        _release(api, claim)
+        report.issue("grooming budget spent", label, detail=str(exc))
+        return
+    except GroomingFailed as exc:
+        _record(api, task.task_gid, limits.model, exc.usage, exc.cost_usd)
+        _release(api, claim)
+        report.issue("grooming run failed", label, detail=str(exc))
+        return
+
+    _record(api, task.task_gid, result.model, result.usage, result.cost_usd)
+    proposal = build(
+        task,
+        result.proposal,
+        model=result.model,
+        cost_usd=result.cost_usd,
+        split=limits.split,
+    )
+    api.submit_grooming_proposal(proposal)
+
+    report.count("rounds", result.rounds)
+    report.count("cost_usd", f"{result.cost_usd:.4f}")
+    report.count("questions", len(proposal.questions))
+    report.count("children", len(proposal.children))
+    report.updated("grooming proposal", f"{label} · {proposal.title}")
+
+
+def _release(api: GroomingApi, claim: GroomingClaimRequest) -> None:
+    """Give the claim back. A failure here is logged, never raised over the run's."""
+    try:
+        api.release_grooming_claim(claim)
+    except Exception:  # noqa: BLE001 — the run's own outcome is what matters
+        log.exception("worker: could not release the claim on %s", claim.task_gid)
 
 
 def _record(

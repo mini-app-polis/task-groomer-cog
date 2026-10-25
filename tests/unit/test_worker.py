@@ -8,6 +8,9 @@ from typing import Any
 import pytest
 from _fakes import PROPOSAL_INPUT, REGISTRY, TASK
 from mini_app_polis.api.contract import (
+    GroomingClaimReleased,
+    GroomingClaimRequest,
+    GroomingClaimResult,
     GroomingProposal,
     GroomingProposalAccepted,
     GroomingRunCreate,
@@ -33,6 +36,20 @@ class FakeApi:
     spent: float = 0.0
     runs: list[GroomingRunCreate] = field(default_factory=list)
     proposals: list[GroomingProposal] = field(default_factory=list)
+    #: Whether the next claim is won; a claim already held is not.
+    wins: bool = True
+    claims: list[GroomingClaimRequest] = field(default_factory=list)
+    releases: list[GroomingClaimRequest] = field(default_factory=list)
+
+    def claim_grooming(self, payload: GroomingClaimRequest) -> GroomingClaimResult:
+        self.claims.append(payload)
+        return GroomingClaimResult(**payload.model_dump(), claimed=self.wins)
+
+    def release_grooming_claim(
+        self, payload: GroomingClaimRequest
+    ) -> GroomingClaimReleased:
+        self.releases.append(payload)
+        return GroomingClaimReleased(**payload.model_dump(), released=True)
 
     def grooming_spend(self) -> GroomingSpend:
         return GroomingSpend(month="2026-10", runs=len(self.runs), cost_usd=self.spent)
@@ -53,8 +70,12 @@ class FakeApi:
         return GroomingProposalAccepted(message_id="m", task_gid=payload.task_gid)
 
 
-def _run(api: FakeApi, outcome: Any) -> None:
+def _run(api: FakeApi, outcome: Any) -> list[str]:
+    """Run one job; returns what reached the model, so a test sees no paid call."""
+    groomed: list[str] = []
+
     def fake_groom(task, **kwargs):
+        groomed.append(task.task_gid)
         assert kwargs["board"] == ["MINI-9 · Discord commands"]
         assert kwargs["spent_this_month"]() == api.spent
         if isinstance(outcome, Exception):
@@ -69,6 +90,7 @@ def _run(api: FakeApi, outcome: Any) -> None:
         repos_factory=lambda registry: object(),
         groom_fn=fake_groom,
     )
+    return groomed
 
 
 @pytest.mark.parametrize(
@@ -107,6 +129,10 @@ def test_a_run_records_its_cost_and_hands_its_proposal_back(
     assert proposal.task_gid == TASK.task_gid
     assert proposal.fingerprint == TASK.fingerprint
     assert proposal.questions == PROPOSAL_INPUT["questions"]
+    # Claimed for this task and content first; a run that succeeds keeps it.
+    (claim,) = api.claims
+    assert (claim.task_gid, claim.fingerprint) == (TASK.task_gid, TASK.fingerprint)
+    assert api.releases == []
     ((_, kwargs),) = _no_outbound_reports
     assert "MINI-38 · Dashboard for TV shows and movies" in kwargs["text"]
 
@@ -128,9 +154,44 @@ def test_a_run_that_ends_without_a_proposal_is_reported_not_retried(
     _run(api, error)  # does not raise: the message is not redelivered
     assert api.proposals == []
     assert [r.cost_usd for r in api.runs] == ([0.05] if error.cost_usd else [])
+    # The claim is given back, so the next send can groom the same content.
+    assert api.releases == api.claims
     ((args, kwargs),) = _no_outbound_reports
     assert args[1] == "WARN"
     assert reason in kwargs["text"]
+
+
+def test_a_claim_already_held_is_acknowledged_with_nothing_paid(
+    _no_outbound_reports,
+) -> None:
+    api = FakeApi(wins=False)
+    groomed = _run(api, AssertionError("the model must not be called"))
+    assert groomed == []
+    assert api.runs == [] and api.proposals == [] and api.releases == []
+    ((args, kwargs),) = _no_outbound_reports
+    assert args[1] == "SUCCESS"
+    assert "already claimed" in kwargs["text"]
+
+
+def test_a_claim_that_cannot_be_asked_for_drops_the_job(_no_outbound_reports) -> None:
+    class Down(FakeApi):
+        def claim_grooming(self, payload: GroomingClaimRequest) -> GroomingClaimResult:
+            raise RuntimeError("api down")
+
+    api = Down()
+    groomed = _run(api, AssertionError("the model must not be called"))
+    assert groomed == []
+    assert api.runs == [] and api.proposals == [] and api.releases == []
+    ((args, kwargs),) = _no_outbound_reports
+    assert args[1] == "WARN"
+    assert "grooming claim failed" in kwargs["text"]
+
+
+def test_a_run_that_crashes_gives_its_claim_back() -> None:
+    api = FakeApi()
+    with pytest.raises(RuntimeError, match="model down"):
+        _run(api, RuntimeError("model down"))
+    assert api.releases == api.claims and len(api.claims) == 1
 
 
 def test_the_handler_reports_an_unreadable_message_and_names_it(

@@ -65,11 +65,9 @@ def test_a_job_reads_the_code_and_hands_its_proposal_back(
 def test_a_duplicate_delivery_proposes_for_the_same_content(world, handler) -> None:
     """SQS delivers at least once. The queue allows one receive, so a failed
     job is never retried, but SQS can still hand the same message over
-    twice. Each delivery is a paid run, and both are recorded against the
-    month's cap so neither cost goes missing. Both proposals carry the
-    fingerprint the job was made for: the task manager applies a proposal
-    only to that content, and applying the first changes it, so the task is
-    changed once."""
+    twice. The first delivery claims the task and its content before the
+    model is called; the second finds the claim held and is acknowledged
+    with nothing paid, recorded or proposed."""
     model, _github, api = world
     model.conversation = [propose()]
     body = groom_body()
@@ -78,9 +76,44 @@ def test_a_duplicate_delivery_proposes_for_the_same_content(world, handler) -> N
         result = handler(sqs_event(sqs_record(body, "m-1", receive_count=attempt)))
         assert result == {"batchItemFailures": []}
 
-    assert len(api.runs) == 2
-    assert [p["fingerprint"] for p in api.proposals] == [FINGERPRINT, FINGERPRINT]
-    assert api.proposals[0] == api.proposals[1]
+    assert model.first_requests() == 1
+    assert len(api.runs) == 1
+    assert [p["fingerprint"] for p in api.proposals] == [FINGERPRINT]
+    assert api.claims == {(TASK_GID, FINGERPRINT): "claimed"}
+    assert api.releases == []
+
+
+def test_a_failed_run_gives_its_claim_back_so_the_next_send_can_groom(
+    world, handler
+) -> None:
+    model, _github, api = world
+    model.conversation = [propose()]
+    api.fail("/v1/tasks/groomings/proposals", 502)
+
+    failed = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+    assert failed == {"batchItemFailures": [{"itemIdentifier": "m-1"}]}
+    assert api.claims == {(TASK_GID, FINGERPRINT): "released"}
+
+    # The same content, sent again in a new message, is groomed.
+    again = handler(sqs_event(sqs_record(groom_body(), "m-2")))
+    assert again == {"batchItemFailures": []}
+    assert len(api.proposals) == 1
+    assert model.first_requests() == 2
+
+
+def test_a_claim_that_cannot_be_asked_for_drops_the_job_unpaid(
+    world, handler, _no_outbound_reports
+) -> None:
+    model, _github, api = world
+    model.conversation = [propose()]
+    api.fail("/v1/tasks/groomings/claims", 502)
+
+    result = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+
+    assert result == {"batchItemFailures": []}
+    assert model.requests == []
+    assert api.runs == [] and api.proposals == []
+    assert _severities(_no_outbound_reports) == ["WARN"]
 
 
 def test_a_bad_record_is_returned_and_the_rest_of_the_batch_completes(
@@ -132,6 +165,7 @@ def test_the_monthly_cap_stops_a_run_before_it_is_paid(
     assert result == {"batchItemFailures": []}
     assert model.requests == []
     assert api.runs == [] and api.proposals == []
+    assert api.claims == {(TASK_GID, FINGERPRINT): "released"}
     assert _severities(_no_outbound_reports) == ["WARN"]
 
 
