@@ -102,3 +102,50 @@ def test_the_split_setting_is_read_from_the_environment(monkeypatch) -> None:
     assert Limits.from_env().split is False
     monkeypatch.setenv("GROOMER_SPLIT", "true")
     assert Limits.from_env().split is True
+
+
+def test_with_splitting_on_a_proposal_passes_the_linter_asks_or_splits() -> None:
+    on = system_prompt({"infra": "Terraform."}, [], split=True)
+    assert (
+        "A proposal must either satisfy the linter, ask questions, or propose "
+        "children." in on
+    )
+    assert (
+        "When the body you propose says the work has more than one part, "
+        'repository or executor (for example "one per child"), propose children '
+        "rather than a single task." in on
+    )
+    assert (
+        "where names exactly one repository from the registry (none only for a "
+        "cowork or person task with no repository), and the task has a single "
+        "executor." in on
+    )
+    assert "One task per proposal." not in on
+
+
+def test_with_splitting_off_a_task_that_needs_dividing_gets_a_question() -> None:
+    off = system_prompt({"infra": "Terraform."}, [])
+    assert "This run cannot split a task into children." in off
+    assert (
+        "where names exactly one repository from the registry (none only for a "
+        "cowork or person task with no repository), and the task has a single "
+        "executor." in off
+    )
+    assert "A proposal must either satisfy the linter or ask questions." in off
+    assert "If the work spans more than one repository or more than one executor" in off
+    assert "ask a question on how to divide the work instead." in off
+
+
+def test_the_owners_decision_is_cowork_work() -> None:
+    rule = (
+        "A task whose deliverable is the owner's decision (an ADR choosing "
+        "product behaviour, a definition of roles, which data drives a feature) "
+        "gets the cowork executor"
+    )
+    off = system_prompt({"infra": "Terraform."}, [])
+    on = system_prompt({"infra": "Terraform."}, [], split=True)
+    assert rule in off and rule in on
+    assert (
+        "the decision is a cowork child, and the children that build on it wait "
+        "on it in blocked_by_siblings" in on
+    )

@@ -93,6 +93,10 @@ not ask who does the work or whether a worker can reach what it needs, and \
 do not propose an executor.
 - If it has none and the work needs what the agent cannot reach, propose \
 the executor by what the task must reach. Ask only when you cannot tell.
+- A task whose deliverable is the owner's decision (an ADR choosing product \
+behaviour, a definition of roles, which data drives a feature) gets the \
+cowork executor: the agent cannot make his decisions for him. Work that \
+builds on the decision waits on it.
 
 How to work:
 
@@ -118,12 +122,23 @@ SPLITTING = """\
 Splitting. A ready task has one of two shapes. A leaf names at most one \
 repository in where and has one executor. A compound task has no work of \
 its own: it is done when its children are, and waits on all of them.
+- The board's linter holds a leaf to this: where names exactly one \
+repository from the registry (none only for a cowork or person task with \
+no repository), and the task has a single executor.
+- A proposal must either satisfy the linter, ask questions, or propose \
+children.
+- When the body you propose says the work has more than one part, \
+repository or executor (for example "one per child"), propose children \
+rather than a single task.
 - If the task is neither, because its work spans more than one repository \
 or more than one executor, propose children instead of filling its own \
 done_when, where, constraints, effort and blocked_by. Each child is a leaf \
 with its own title, done_when, where (one repository; none only for a \
 cowork or person child with no repository), constraints, effort and body, \
 and an executor when it is not the agent's.
+- A task that holds both the owner's decision and the work that builds on \
+it is split: the decision is a cowork child, and the children that build \
+on it wait on it in blocked_by_siblings.
 - Put the children in the order they can be done. A child that must wait \
 for an earlier one (a shared library released before its consumer) names \
 it in blocked_by_siblings, by its position in children, counting from 0. \
@@ -137,14 +152,29 @@ ask how to divide it.
 """
 
 
+NOT_SPLITTING = """\
+One task per proposal. This run cannot split a task into children. The \
+board's linter holds a task to this: where names exactly one repository \
+from the registry (none only for a cowork or person task with no \
+repository), and the task has a single executor. A proposal must either \
+satisfy the linter or ask questions. If the work spans more than one \
+repository or more than one executor, or the body you propose says it has \
+more than one part, do not leave it as a single proposal: ask a question \
+on how to divide the work instead.
+"""
+
+
 def instructions(*, split: bool = False) -> str:
     """The board's rules, with the executors the contract names.
 
-    ``split`` adds the rules for splitting a task into children.
+    ``split`` adds the rules for splitting a task into children; without
+    it, a task that needs dividing gets a question on how to divide it.
     """
     text = INSTRUCTIONS.replace("{executor_lines}", _executor_lines())
     if split:
         text += "\n" + SPLITTING.replace("{max_children}", str(GROOMING_MAX_CHILDREN))
+    else:
+        text += "\n" + NOT_SPLITTING
     return text
 
 
