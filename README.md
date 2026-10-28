@@ -61,6 +61,12 @@ reach, and asks only when it cannot tell; task-manager-cog applies the
 proposed executor as a tag. A proposal never changes a tag the task
 already has.
 
+A task whose deliverable is the owner's decision (an ADR choosing product
+behaviour, a definition of roles, which data drives a feature) is `cowork`
+work, not the agent's. With splitting on, a task that holds both the
+decision and the build that follows it is split: the decision is a
+`cowork` child and the build children wait on it.
+
 **Splitting.** With `GROOMER_SPLIT=true`, a task that is neither a leaf
 (one repository, one executor) nor a compound task (done when its
 children are) is split. The proposal carries its children, each a leaf
@@ -105,6 +111,14 @@ is paid for; another is acknowledged with nothing run. A run that fails gives
 its claim back (`POST /v1/tasks/groomings/claims/release`) so the next send
 can groom the same content, and if the claim cannot be asked for, the job is
 dropped rather than run unclaimed.
+
+A run stopped because the month's cap is spent makes no model request (the
+spend is checked before the first one) and reports the stop for the task and
+its content's fingerprint (`POST /v1/tasks/groomings/budget-spent`) before
+giving its claim back, so the API has the task sent again once there is
+budget, without waiting for it to change. A failure to report the stop is
+logged and does not fail the run. Any other failed run is not reported this
+way.
 
 ## Layout
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 from _fakes import TASK
-from mini_app_polis.api.contract import GROOMING_MAX_CHILDREN
+from mini_app_polis.api.contract import GROOMING_MAX_CHILDREN, GroomingProposal
 
 from task_groomer_cog.proposal import build
 
@@ -147,3 +147,40 @@ def test_a_proposal_without_an_executor_does_not_send_the_field() -> None:
     assert "children" not in plain.model_fields_set
     named = build(TASK, {"title": "T", "executor": "person"}, model="m", cost_usd=0)
     assert "executor" in named.model_fields_set
+
+
+DECISION = {
+    "title": "Decide what tagging means and which data feeds identification",
+    "done_when": "A decision record under docs/decisions states the choices.",
+    "where": "common-python-utils",
+    "constraints": "None",
+    "effort": "S",
+    "blocked_by": "None",
+    "body": "The owner decides the product behaviour before anything is built.",
+    "executor": "cowork",
+    "questions": [],
+}
+
+
+def test_a_decision_record_task_is_proposed_as_cowork() -> None:
+    proposal = build(TASK, DECISION, model="m", cost_usd=0.1)
+    assert proposal.executor == "cowork"
+    # It round-trips as the contract's proposal, executor and all.
+    sent = proposal.model_dump_json(exclude_unset=True)
+    assert GroomingProposal.model_validate_json(sent).executor == "cowork"
+
+
+def test_a_decision_and_its_build_split_into_a_cowork_child_first() -> None:
+    proposed = {
+        "title": "Redesign tagging",
+        "body": "Decide, then build.",
+        "children": [
+            _child(title="Decide what tagging means", executor="cowork"),
+            _child(title="Build the tagging", blocked_by_siblings=[0]),
+        ],
+    }
+    proposal = build(TASK, proposed, model="m", cost_usd=0.1, split=True)
+    decision, build_child = proposal.children
+    assert decision.executor == "cowork"
+    assert build_child.executor is None
+    assert build_child.blocked_by_siblings == [0]
