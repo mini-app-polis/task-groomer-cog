@@ -27,6 +27,15 @@ A run that fails gives its claim back
 content can claim it; a run that succeeds keeps it. If the claim cannot be
 asked for at all, the job is reported and dropped, never run unclaimed.
 
+**A run stopped by the budget is sent again.** The month's spend is checked
+before every request, the first included, so with the cap spent the run
+makes no model request. A run stopped that way reports the stop for the task
+and its content's fingerprint (``POST /v1/tasks/groomings/budget-spent``)
+before it gives its claim back, and the API has the job sent again once
+there is budget, without waiting for the task to change. If the report
+fails it is logged and the run ends as it would have. Any other failed run
+is not reported this way and is not sent again until the task changes.
+
 **An unrecognised message is a producer bug.** It is reported once and
 lands in the dead-letter queue.
 """
@@ -40,6 +49,8 @@ from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api import KaianoApiClient
 from mini_app_polis.api.contract import (
+    GroomingBudgetSpentMarked,
+    GroomingBudgetSpentRequest,
     GroomingClaimReleased,
     GroomingClaimRequest,
     GroomingClaimResult,
@@ -93,6 +104,12 @@ class GroomingApi(Protocol):
         self, payload: GroomingClaimRequest
     ) -> GroomingClaimReleased:
         """Give a claim back after a run that failed."""
+        ...
+
+    def mark_grooming_budget_spent(
+        self, payload: GroomingBudgetSpentRequest
+    ) -> GroomingBudgetSpentMarked:
+        """Report a run stopped by the budget, so the job is sent again."""
         ...
 
     def grooming_spend(self) -> GroomingSpend:
@@ -193,6 +210,7 @@ def _groom_claimed(
         )
     except BudgetSpent as exc:
         _record(api, task.task_gid, limits.model, exc.usage, exc.cost_usd)
+        _mark_budget_spent(api, claim)
         _release(api, claim)
         report.issue("grooming budget spent", label, detail=str(exc))
         return
@@ -225,6 +243,18 @@ def _release(api: GroomingApi, claim: GroomingClaimRequest) -> None:
         api.release_grooming_claim(claim)
     except Exception:  # noqa: BLE001 — the run's own outcome is what matters
         log.exception("worker: could not release the claim on %s", claim.task_gid)
+
+
+def _mark_budget_spent(api: GroomingApi, claim: GroomingClaimRequest) -> None:
+    """Report a stop by the budget. A failure here is logged, never raised."""
+    try:
+        api.mark_grooming_budget_spent(
+            GroomingBudgetSpentRequest(
+                task_gid=claim.task_gid, fingerprint=claim.fingerprint
+            )
+        )
+    except Exception:  # noqa: BLE001 — the run's own outcome is what matters
+        log.exception("worker: could not report the budget stop on %s", claim.task_gid)
 
 
 def _record(
