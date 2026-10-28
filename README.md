@@ -124,7 +124,7 @@ src/task_groomer_cog/
 
 **Prerequisites:** Python ≥ 3.11, [uv](https://docs.astral.sh/uv/), and the
 [Doppler CLI](https://docs.doppler.com/docs/install-cli). Secrets come from
-Doppler's shared `dev` config; nothing reads a `.env` file. `.env.example`
+this repo's own Doppler `dev` config; nothing reads a `.env` file. `.env.example`
 lists the names read.
 
 ```bash
