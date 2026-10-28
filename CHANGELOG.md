@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.5.5...v1.6.0) (2026-10-28)
+
+
+### Features
+
+* **prompt:** require proposals to pass the linter, ask, or split, and groom the owner's decisions as cowork ([2032f4a](https://github.com/mini-app-polis/task-groomer-cog/commit/2032f4a36bfad62da0b7cecd9606c5db71ad6b22))
+
 ## [1.5.5](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.5.4...v1.5.5) (2026-10-28)
 
 
