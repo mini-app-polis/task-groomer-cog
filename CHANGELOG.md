@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.6.0...v1.7.0) (2026-10-28)
+
+
+### Features
+
+* **worker:** report a budget-spent stop to the API so the task is sent again ([a9c7b1a](https://github.com/mini-app-polis/task-groomer-cog/commit/a9c7b1a424c106ea4a92abb807646e888f0ac8b0))
+
 # [1.6.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.5.5...v1.6.0) (2026-10-28)
 
 
