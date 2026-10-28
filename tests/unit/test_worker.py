@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 from _fakes import PROPOSAL_INPUT, REGISTRY, TASK
 from mini_app_polis.api.contract import (
+    GroomingBudgetSpentMarked,
+    GroomingBudgetSpentRequest,
     GroomingClaimReleased,
     GroomingClaimRequest,
     GroomingClaimResult,
@@ -40,6 +42,9 @@ class FakeApi:
     wins: bool = True
     claims: list[GroomingClaimRequest] = field(default_factory=list)
     releases: list[GroomingClaimRequest] = field(default_factory=list)
+    budget_spent: list[GroomingBudgetSpentRequest] = field(default_factory=list)
+    #: The calls in the order they were made, by name.
+    calls: list[str] = field(default_factory=list)
 
     def claim_grooming(self, payload: GroomingClaimRequest) -> GroomingClaimResult:
         self.claims.append(payload)
@@ -49,7 +54,15 @@ class FakeApi:
         self, payload: GroomingClaimRequest
     ) -> GroomingClaimReleased:
         self.releases.append(payload)
+        self.calls.append("release")
         return GroomingClaimReleased(**payload.model_dump(), released=True)
+
+    def mark_grooming_budget_spent(
+        self, payload: GroomingBudgetSpentRequest
+    ) -> GroomingBudgetSpentMarked:
+        self.budget_spent.append(payload)
+        self.calls.append("budget_spent")
+        return GroomingBudgetSpentMarked(**payload.model_dump())
 
     def grooming_spend(self) -> GroomingSpend:
         return GroomingSpend(month="2026-10", runs=len(self.runs), cost_usd=self.spent)
@@ -159,6 +172,50 @@ def test_a_run_that_ends_without_a_proposal_is_reported_not_retried(
     ((args, kwargs),) = _no_outbound_reports
     assert args[1] == "WARN"
     assert reason in kwargs["text"]
+
+
+def test_a_run_stopped_by_the_budget_is_reported_so_it_is_sent_again(
+    _no_outbound_reports,
+) -> None:
+    api = FakeApi()
+    _run(api, BudgetSpent("spent", cost_usd=0.0))
+    (marked,) = api.budget_spent
+    assert (marked.task_gid, marked.fingerprint) == (TASK.task_gid, TASK.fingerprint)
+    # Reported before the claim is given back.
+    assert api.calls == ["budget_spent", "release"]
+    assert api.releases == api.claims
+    ((args, kwargs),) = _no_outbound_reports
+    assert args[1] == "WARN"
+    assert "grooming budget spent" in kwargs["text"]
+
+
+def test_a_budget_stop_that_cannot_be_reported_still_ends_the_run(
+    _no_outbound_reports,
+) -> None:
+    class Refuses(FakeApi):
+        def mark_grooming_budget_spent(
+            self, payload: GroomingBudgetSpentRequest
+        ) -> GroomingBudgetSpentMarked:
+            raise RuntimeError("api down")
+
+    api = Refuses()
+    _run(api, BudgetSpent("spent", cost_usd=0.0))  # does not raise
+    assert api.releases == api.claims and len(api.claims) == 1
+    assert api.proposals == []
+    ((args, kwargs),) = _no_outbound_reports
+    assert args[1] == "WARN"
+    assert "grooming budget spent" in kwargs["text"]
+
+
+def test_a_failed_run_is_not_reported_as_a_budget_stop(_no_outbound_reports) -> None:
+    api = FakeApi()
+    _run(api, GroomingFailed("no proposal", cost_usd=0.05, usage=Usage(10, 2)))
+    assert api.budget_spent == []
+    assert [r.cost_usd for r in api.runs] == [0.05]
+    assert api.releases == api.claims and len(api.claims) == 1
+    assert api.proposals == []
+    ((args, kwargs),) = _no_outbound_reports
+    assert "grooming run failed" in kwargs["text"]
 
 
 def test_a_claim_already_held_is_acknowledged_with_nothing_paid(
