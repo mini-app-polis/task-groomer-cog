@@ -20,11 +20,11 @@ def _task(gid: str, name: str, section: str = "Ideas", completed: bool = False):
 
 
 BOARD = [
-    _task("1", "MINI-1 · One"),
-    _task("2", "MINI-2 · Two", section="Ready"),
-    _task("3", "MINI-3 · TEMPLATE — do not work"),
+    _task("1", "TASK-1 · One"),
+    _task("2", "TASK-2 · Two", section="Ready"),
+    _task("3", "TASK-3 · TEMPLATE — do not work"),
     _task("4", "Four", section="Blocked"),
-    _task("5", "MINI-5 · Done", completed=True),
+    _task("5", "TASK-5 · Done", completed=True),
 ]
 
 
@@ -94,13 +94,13 @@ def test_a_board_dry_run_counts_the_grooming_columns_only(
 ) -> None:
     assert cli.main(["--board", "--dry-run"]) == 0
     out = "\n".join(logged.lines)
-    assert "MINI-1 · One" in out and "Four" in out
-    assert not any("MINI-2 · Two" in line for line in logged.lines)
+    assert "TASK-1 · One" in out and "Four" in out
+    assert not any("TASK-2 · Two" in line for line in logged.lines)
     assert "2 task(s) with claude-sonnet-5-5" in out
     assert "Nothing was spent." in out
     assert len(board) == 2
     # A task is not shown its own name among the other open tasks.
-    assert "- MINI-1 · One" not in board[0]["system"][0]["text"]
+    assert "- TASK-1 · One" not in board[0]["system"][0]["text"]
 
 
 def test_a_task_dry_run_counts_that_task(board: list[dict]) -> None:

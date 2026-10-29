@@ -37,7 +37,7 @@ def _groom(script: Script, *, limits: Limits | None = None, spent: float = 0.0):
     result = groom(
         TASK,
         registry=REGISTRY,
-        board=["MINI-9 · Discord commands"],
+        board=["TASK-9 · Discord commands"],
         repos=repos,  # type: ignore[arg-type]
         spent_this_month=lambda: spent,
         limits=limits or Limits(),
@@ -61,9 +61,9 @@ def test_a_run_reads_then_proposes() -> None:
     first, second = script.bodies
     assert first["model"] == "claude-sonnet-5-5"
     assert first["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert "MINI-9 · Discord commands" in first["system"][0]["text"]
+    assert "TASK-9 · Discord commands" in first["system"][0]["text"]
     assert "infra: Terraform for the fleet." in first["system"][0]["text"]
-    assert "MINI-38 · idea" in first["messages"][0]["content"]
+    assert "TASK-38 · idea" in first["messages"][0]["content"]
     assert second["messages"][-1]["content"][0]["type"] == "tool_result"
     assert "tool_choice" not in first
 

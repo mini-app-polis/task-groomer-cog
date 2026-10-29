@@ -34,7 +34,7 @@ def test_a_job_reads_the_code_and_hands_its_proposal_back(
 ) -> None:
     model, github, api = world
     model.conversation = [
-        tool_use("read_file", {"repo": "infra", "path": "cogs.tf"}),
+        tool_use("read_file", {"repo": "infra", "path": "cogs.hcl"}),
         propose(),
     ]
 
