@@ -10,7 +10,7 @@ from task_groomer_cog.repos import RepoError, Repos
 
 FILES = {
     "README.md": "# infra\nTerraform for the fleet.\n",
-    "cogs.tf": "\n".join(f'module "cog{i}" {{}}' for i in range(500)),
+    "cogs.hcl": "\n".join(f'module "cog{i}" {{}}' for i in range(500)),
     "modules/cog-worker/main.tf": 'resource "aws_sqs_queue" "jobs" {}\n',
     "modules/cog-worker/variables.tf": 'variable "name" {}\n',
     "node_modules/x/index.js": "ignored",
@@ -50,10 +50,10 @@ def test_list_files_shows_two_levels_and_skips_noise() -> None:
 
 
 def test_read_file_numbers_lines_and_pages() -> None:
-    out = _repos().read_file("infra", "cogs.tf")
+    out = _repos().read_file("infra", "cogs.hcl")
     assert '1: module "cog0" {}' in out
     assert "(lines 1-400 of 500; read on with start_line)" in out
-    rest = _repos().read_file("infra", "cogs.tf", start_line=401)
+    rest = _repos().read_file("infra", "cogs.hcl", start_line=401)
     assert '401: module "cog400" {}' in rest
     assert "read on" not in rest
 

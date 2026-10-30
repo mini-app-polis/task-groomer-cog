@@ -10,8 +10,8 @@ from mini_app_polis.api.contract import GroomingTask
 
 TASK = GroomingTask(
     task_gid="1219754951292362",
-    task_id="MINI-38",
-    name="MINI-38 · idea - dashboard for TV shows and movies",
+    task_id="TASK-38",
+    name="TASK-38 · idea - dashboard for TV shows and movies",
     notes="Done when:\nWhere:\n",
     section="Ideas",
     fingerprint="d" * 64,

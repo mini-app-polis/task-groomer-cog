@@ -35,7 +35,7 @@ services:
 REPOS: dict[str, dict[str, str]] = {
     "infra": {
         "README.md": "# infra\nTerraform for the fleet.\n",
-        "cogs.tf": 'module "deejay" {\n  source = "./modules/cog-worker"\n}\n',
+        "cogs.hcl": 'module "deejay" {\n  source = "./modules/cog-worker"\n}\n',
     },
     "website-astro-software": {
         "README.md": "# website-astro-software\nThe software site.\n",
@@ -50,15 +50,15 @@ def job_payload(**task_overrides: Any) -> dict[str, Any]:
     """A grooming job as the API enqueues it."""
     task = {
         "task_gid": TASK_GID,
-        "task_id": "MINI-38",
-        "name": "MINI-38 · idea - dashboard for TV shows and movies",
+        "task_id": "TASK-38",
+        "name": "TASK-38 · idea - dashboard for TV shows and movies",
         "notes": "Done when:\nWhere:\n",
         "section": "Ideas",
         "fingerprint": FINGERPRINT,
         "problems": ["Done when is blank"],
     }
     task.update(task_overrides)
-    return {"task": task, "board": ["MINI-9 · Discord commands"]}
+    return {"task": task, "board": ["TASK-9 · Discord commands"]}
 
 
 def groom_body(**task_overrides: Any) -> str:

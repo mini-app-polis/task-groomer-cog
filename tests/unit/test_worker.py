@@ -24,7 +24,7 @@ from task_groomer_cog import worker
 from task_groomer_cog.agent import BudgetSpent, GroomingFailed, RunResult
 from task_groomer_cog.pricing import Usage
 
-JOB = {"task": TASK.model_dump(mode="json"), "board": ["MINI-9 · Discord commands"]}
+JOB = {"task": TASK.model_dump(mode="json"), "board": ["TASK-9 · Discord commands"]}
 
 
 def _body(**overrides: Any) -> str:
@@ -89,7 +89,7 @@ def _run(api: FakeApi, outcome: Any) -> list[str]:
 
     def fake_groom(task, **kwargs):
         groomed.append(task.task_gid)
-        assert kwargs["board"] == ["MINI-9 · Discord commands"]
+        assert kwargs["board"] == ["TASK-9 · Discord commands"]
         assert kwargs["spent_this_month"]() == api.spent
         if isinstance(outcome, Exception):
             raise outcome
@@ -147,7 +147,7 @@ def test_a_run_records_its_cost_and_hands_its_proposal_back(
     assert (claim.task_gid, claim.fingerprint) == (TASK.task_gid, TASK.fingerprint)
     assert api.releases == []
     ((_, kwargs),) = _no_outbound_reports
-    assert "MINI-38 · Dashboard for TV shows and movies" in kwargs["text"]
+    assert "TASK-38 · Dashboard for TV shows and movies" in kwargs["text"]
 
 
 @pytest.mark.parametrize(
