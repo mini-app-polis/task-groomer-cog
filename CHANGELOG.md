@@ -1,3 +1,10 @@
+## [1.7.3](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.7.2...v1.7.3) (2026-10-30)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.1.1 ([41a3ddd](https://github.com/mini-app-polis/task-groomer-cog/commit/41a3ddd28f2eddd4132d713e0f3d701f64b89300))
+
 ## [1.7.2](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.7.1...v1.7.2) (2026-10-29)
 
 
