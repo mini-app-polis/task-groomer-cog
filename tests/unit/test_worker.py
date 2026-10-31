@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -290,3 +291,25 @@ def test_the_handler_returns_everything_when_settings_cannot_load(
         {"itemIdentifier": "a"},
         {"itemIdentifier": "b"},
     ]
+
+
+def test_the_handler_logs_effective_settings_once_per_container(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    secret = "sk-ant-not-for-the-log"
+    monkeypatch.setattr(worker, "load_secrets", lambda refresh: [])
+    monkeypatch.setattr(worker, "_settings_logged", False)
+    monkeypatch.setenv("SETTINGS_ALLOWLIST", "GROOMER_MODEL,GROOMER_MAX_ROUNDS")
+    monkeypatch.delenv("GROOMER_MODEL", raising=False)
+    monkeypatch.setenv("GROOMER_MAX_ROUNDS", "3")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+    with caplog.at_level(logging.DEBUG):
+        worker.lambda_handler({"Records": []}, None)
+        worker.lambda_handler({"Records": []}, None)
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines.count(f"GROOMER_MODEL={worker.Limits().model} (default)") == 1
+    assert lines.count("GROOMER_MAX_ROUNDS=3 (set)") == 1
+    assert lines.count("ANTHROPIC_API_KEY (set)") == 1
+    assert all(secret not in r.getMessage() for r in caplog.records)
+    assert secret not in caplog.text

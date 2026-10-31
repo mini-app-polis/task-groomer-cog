@@ -42,6 +42,7 @@ lands in the dead-letter queue.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
@@ -62,6 +63,7 @@ from mini_app_polis.api.contract import (
     GroomingSpend,
     TaskGroomMessage,
 )
+from mini_app_polis.environment import log_settings
 from mini_app_polis.lambda_worker import (
     UnprocessableMessage,
     all_failed,
@@ -75,6 +77,7 @@ from mini_app_polis.sentry import init_sentry
 from ._version import __version__
 from .agent import BudgetSpent, GroomingFailed, Limits, groom
 from .proposal import build
+from .registry import DEFAULT_URL as DEFAULT_REGISTRY_URL
 from .registry import load_registry
 from .repos import Repos
 
@@ -91,6 +94,9 @@ MACHINE_NAME = "task-groomer-cog"
 DEADLINE_MARGIN_SECONDS = 20
 
 init_sentry(REPO)
+
+#: Whether this container has logged its effective settings yet.
+_settings_logged = False
 
 
 class GroomingApi(Protocol):
@@ -274,6 +280,44 @@ def _record(
     )
 
 
+def effective_settings() -> dict[str, Any]:
+    """Each setting this cog reads, as resolved with its default applied.
+
+    Secrets are included so the report says whether each is set; the shared
+    helper shows a value only for a name on ``SETTINGS_ALLOWLIST``.
+    """
+    limits = Limits.from_env()
+    return {
+        "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+        "TASK_GROOMER_COG_API_KEY": os.environ.get("TASK_GROOMER_COG_API_KEY"),
+        "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
+        "ECOSYSTEM_YAML_URL": (os.environ.get("ECOSYSTEM_YAML_URL") or "").strip()
+        or DEFAULT_REGISTRY_URL,
+        "GROOMER_MODEL": limits.model,
+        "GROOMER_MAX_ROUNDS": limits.max_rounds,
+        "GROOMER_MAX_INPUT_TOKENS": limits.max_input_tokens,
+        "GROOMER_MAX_OUTPUT_TOKENS": limits.max_output_tokens,
+        "GROOMER_MONTHLY_CAP_USD": limits.monthly_cap_usd,
+        "GROOMER_SPLIT": limits.split,
+    }
+
+
+def _log_settings_once() -> None:
+    """Log the effective settings on a container's first invocation only.
+
+    Not at import: the settings reach the environment from Parameter Store
+    in the handler, so only after the first load do they show as set.
+    """
+    global _settings_logged
+    if _settings_logged:
+        return
+    _settings_logged = True
+    try:
+        log_settings(effective_settings())
+    except Exception:  # noqa: BLE001 — the report is not the job
+        log.exception("worker: could not log the effective settings")
+
+
 def process_message(body: str, *, run_id: str, **kwargs: Any) -> None:
     """Handle one message."""
     job = parse_message(body)
@@ -309,6 +353,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — nothing can run without its settings
         log.exception("worker: could not refresh settings from SSM")
         return all_failed(event)
+    _log_settings_once()
 
     def handle(record: dict[str, Any]) -> None:
         message_id = str(record.get("messageId") or "")
