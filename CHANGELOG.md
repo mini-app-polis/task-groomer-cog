@@ -1,3 +1,15 @@
+# [1.8.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.7.5...v1.8.0) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.8.0 ([e20f86a](https://github.com/mini-app-polis/task-groomer-cog/commit/e20f86a05d2987de990e07a3217b7d37426a0b48))
+
+
+### Features
+
+* **startup:** log effective settings once at cold start with the shared helper ([1041e6a](https://github.com/mini-app-polis/task-groomer-cog/commit/1041e6a83c5c719f02ee1b3489658e4f3668d799))
+
 ## [1.7.5](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.7.4...v1.7.5) (2026-10-31)
 
 
