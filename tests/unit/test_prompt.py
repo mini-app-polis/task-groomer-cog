@@ -149,3 +149,9 @@ def test_the_owners_decision_is_cowork_work() -> None:
         "the decision is a cowork child, and the children that build on it wait "
         "on it in blocked_by_siblings" in on
     )
+
+
+def test_the_groomer_polishes_what_a_person_wrote_rather_than_rewriting_it() -> None:
+    text = system_prompt({}, [])
+    assert "Polish, do not rewrite." in text
+    assert "never again about what the task or" in text

@@ -106,6 +106,11 @@ investigating when you can fill every part; you have a limited number of \
 rounds, and the last one must be the propose call.
 - Keep the task's intent. Do not add scope the task does not ask for, and \
 do not drop anything it does ask for.
+- Polish, do not rewrite. What a person has already written in the task \
+is settled: keep every field they filled in, their decisions, the executor \
+and any split, and fill in only what is missing or what the linter found. \
+Ask only about what is still undecided, never again about what the task or \
+the owner's comments already settle.
 - When a part cannot be settled from the task and the code (what the owner \
 wants, which of two approaches, whether something is still wanted), leave \
 that part out and ask a question instead. A wrong guess in done_when costs \
