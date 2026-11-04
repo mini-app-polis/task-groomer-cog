@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.8.6...v1.9.0) (2026-11-04)
+
+
+### Features
+
+* polish what a person wrote rather than rewriting it ([98fa4ea](https://github.com/mini-app-polis/task-groomer-cog/commit/98fa4ea327768976153021c901dd0a9da82549da))
+
 ## [1.8.6](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.8.5...v1.8.6) (2026-11-03)
 
 
