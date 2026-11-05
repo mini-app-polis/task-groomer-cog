@@ -1,3 +1,19 @@
+# [1.10.0](https://github.com/mini-app-polis/task-refiner-cog/compare/v1.9.1...v1.10.0) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.15.0 ([68ea6dd](https://github.com/mini-app-polis/task-refiner-cog/commit/68ea6dd19dc466e836ef81d03e1198514ff22bc2))
+* **deps:** bump miniapppolis-common-utils to 7.16.0 ([cbefc0f](https://github.com/mini-app-polis/task-refiner-cog/commit/cbefc0f76a2f5fb2f50081081e02bd2a731fc7db))
+* **deps:** bump miniapppolis-common-utils to 7.18.0 ([0a38d99](https://github.com/mini-app-polis/task-refiner-cog/commit/0a38d99a7a0d4fdbacc88728c4ae84fc78dd8b51))
+
+
+### Features
+
+* **facts:** publish the test-function count ([a947800](https://github.com/mini-app-polis/task-refiner-cog/commit/a9478009228f422fdc706de71dac1798f0d60b2c))
+* rename task-groomer-cog to task-refiner-cog ([c0dc940](https://github.com/mini-app-polis/task-refiner-cog/commit/c0dc9408685c6fa26982d2a4a5c334cfbd2868b1))
+* rename the package and settings to task-refiner-cog ([6bf89f4](https://github.com/mini-app-polis/task-refiner-cog/commit/6bf89f4bb829689d591320aab94398ed820f4d94))
+
 ## [1.9.1](https://github.com/mini-app-polis/task-groomer-cog/compare/v1.9.0...v1.9.1) (2026-11-04)
 
 
