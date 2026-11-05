@@ -1,4 +1,4 @@
-"""task-groomer-cog's Lambda handler, end to end on SQS events.
+"""task-refiner-cog's Lambda handler, end to end on SQS events.
 
 A job is one paid run: the model reads the task and the fleet's code through
 the read-only tools, proposes, and the proposal goes back through the API.
@@ -16,8 +16,8 @@ from .harness import (
     FINGERPRINT,
     TASK_GID,
     LambdaContext,
-    groom_body,
     propose,
+    refine_body,
     sqs_event,
     sqs_record,
     tool_use,
@@ -38,7 +38,7 @@ def test_a_job_reads_the_code_and_hands_its_proposal_back(
         propose(),
     ]
 
-    result = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+    result = handler(sqs_event(sqs_record(refine_body(), "m-1")))
 
     assert result == {"batchItemFailures": []}
     # The tool read the real archive, and its text went back to the model.
@@ -70,7 +70,7 @@ def test_a_duplicate_delivery_proposes_for_the_same_content(world, handler) -> N
     with nothing paid, recorded or proposed."""
     model, _github, api = world
     model.conversation = [propose()]
-    body = groom_body()
+    body = refine_body()
 
     for attempt in (1, 1):
         result = handler(sqs_event(sqs_record(body, "m-1", receive_count=attempt)))
@@ -83,19 +83,19 @@ def test_a_duplicate_delivery_proposes_for_the_same_content(world, handler) -> N
     assert api.releases == []
 
 
-def test_a_failed_run_gives_its_claim_back_so_the_next_send_can_groom(
+def test_a_failed_run_gives_its_claim_back_so_the_next_send_can_refine(
     world, handler
 ) -> None:
     model, _github, api = world
     model.conversation = [propose()]
-    api.fail("/v1/tasks/groomings/proposals", 502)
+    api.fail("/v1/tasks/refinings/proposals", 502)
 
-    failed = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+    failed = handler(sqs_event(sqs_record(refine_body(), "m-1")))
     assert failed == {"batchItemFailures": [{"itemIdentifier": "m-1"}]}
     assert api.claims == {(TASK_GID, FINGERPRINT): "released"}
 
-    # The same content, sent again in a new message, is groomed.
-    again = handler(sqs_event(sqs_record(groom_body(), "m-2")))
+    # The same content, sent again in a new message, is refined.
+    again = handler(sqs_event(sqs_record(refine_body(), "m-2")))
     assert again == {"batchItemFailures": []}
     assert len(api.proposals) == 1
     assert model.first_requests() == 2
@@ -106,9 +106,9 @@ def test_a_claim_that_cannot_be_asked_for_drops_the_job_unpaid(
 ) -> None:
     model, _github, api = world
     model.conversation = [propose()]
-    api.fail("/v1/tasks/groomings/claims", 502)
+    api.fail("/v1/tasks/refinings/claims", 502)
 
-    result = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+    result = handler(sqs_event(sqs_record(refine_body(), "m-1")))
 
     assert result == {"batchItemFailures": []}
     assert model.requests == []
@@ -123,7 +123,7 @@ def test_a_bad_record_is_returned_and_the_rest_of_the_batch_completes(
     model.conversation = [propose()]
     event = sqs_event(
         sqs_record("not json at all", "bad-1"),
-        sqs_record(groom_body(), "good-1"),
+        sqs_record(refine_body(), "good-1"),
         sqs_record('{"type": "task.create", "version": 1, "payload": {}}', "bad-2"),
     )
 
@@ -132,7 +132,7 @@ def test_a_bad_record_is_returned_and_the_rest_of_the_batch_completes(
     assert result == {
         "batchItemFailures": [{"itemIdentifier": "bad-1"}, {"itemIdentifier": "bad-2"}]
     }
-    # The good job was groomed regardless.
+    # The good job was refined regardless.
     assert len(api.proposals) == 1
     # One ERROR per unprocessable message, and the good run's report.
     assert sorted(_severities(_no_outbound_reports)) == ["ERROR", "ERROR", "SUCCESS"]
@@ -156,9 +156,9 @@ def test_the_monthly_cap_stops_a_run_before_it_is_paid(
     world, handler, _no_outbound_reports
 ) -> None:
     model, _github, api = world
-    api.spent = 20.0  # GROOMER_MONTHLY_CAP_USD
+    api.spent = 20.0  # REFINER_MONTHLY_CAP_USD
 
-    result = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+    result = handler(sqs_event(sqs_record(refine_body(), "m-1")))
 
     # Handled, not failed: nothing was spent, and a redelivery would only be
     # refused again.
@@ -177,12 +177,12 @@ def test_a_proposal_the_api_refuses_is_posted_once_and_the_job_dead_letters(
     twice: the record goes to the dead-letter queue with its cost recorded."""
     model, _github, api = world
     model.conversation = [propose()]
-    api.fail("/v1/tasks/groomings/proposals", 502)
+    api.fail("/v1/tasks/refinings/proposals", 502)
 
-    result = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+    result = handler(sqs_event(sqs_record(refine_body(), "m-1")))
 
     assert result == {"batchItemFailures": [{"itemIdentifier": "m-1"}]}
-    assert api.attempts["/v1/tasks/groomings/proposals"] == 1
+    assert api.attempts["/v1/tasks/refinings/proposals"] == 1
     assert api.proposals == []
     assert len(api.runs) == 1
     assert model.first_requests() == 1
@@ -194,7 +194,7 @@ def test_a_transient_model_failure_is_tried_again_inside_the_run(
     model, _github, api = world
     model.conversation = [httpx.Response(529, json={"error": "overloaded"}), propose()]
 
-    result = handler(sqs_event(sqs_record(groom_body(), "m-1")))
+    result = handler(sqs_event(sqs_record(refine_body(), "m-1")))
 
     assert result == {"batchItemFailures": []}
     assert len(model.requests) == 2
@@ -208,7 +208,7 @@ def test_a_job_with_no_time_left_is_returned_without_a_paid_call(
     model.conversation = [propose()]
 
     result = handler(
-        sqs_event(sqs_record(groom_body(), "m-1")),
+        sqs_event(sqs_record(refine_body(), "m-1")),
         LambdaContext(remaining_ms=5_000),
     )
 

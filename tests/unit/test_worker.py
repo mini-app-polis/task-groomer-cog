@@ -9,27 +9,27 @@ from typing import Any
 import pytest
 from _fakes import PROPOSAL_INPUT, REGISTRY, TASK
 from mini_app_polis.api.contract import (
-    GroomingBudgetSpentMarked,
-    GroomingBudgetSpentRequest,
-    GroomingClaimReleased,
-    GroomingClaimRequest,
-    GroomingClaimResult,
-    GroomingProposal,
-    GroomingProposalAccepted,
-    GroomingRunCreate,
-    GroomingRunRecorded,
-    GroomingSpend,
+    RefiningBudgetSpentMarked,
+    RefiningBudgetSpentRequest,
+    RefiningClaimReleased,
+    RefiningClaimRequest,
+    RefiningClaimResult,
+    RefiningProposal,
+    RefiningProposalAccepted,
+    RefiningRunCreate,
+    RefiningRunRecorded,
+    RefiningSpend,
 )
 
-from task_groomer_cog import worker
-from task_groomer_cog.agent import BudgetSpent, GroomingFailed, RunResult
-from task_groomer_cog.pricing import Usage
+from task_refiner_cog import worker
+from task_refiner_cog.agent import BudgetSpent, RefiningFailed, RunResult
+from task_refiner_cog.pricing import Usage
 
 JOB = {"task": TASK.model_dump(mode="json"), "board": ["TASK-9 · Discord commands"]}
 
 
 def _body(**overrides: Any) -> str:
-    message = {"type": "task.groom", "version": 1, "payload": JOB}
+    message = {"type": "task.refine", "version": 1, "payload": JOB}
     message.update(overrides)
     return json.dumps(message)
 
@@ -37,59 +37,59 @@ def _body(**overrides: Any) -> str:
 @dataclass
 class FakeApi:
     spent: float = 0.0
-    runs: list[GroomingRunCreate] = field(default_factory=list)
-    proposals: list[GroomingProposal] = field(default_factory=list)
+    runs: list[RefiningRunCreate] = field(default_factory=list)
+    proposals: list[RefiningProposal] = field(default_factory=list)
     #: Whether the next claim is won; a claim already held is not.
     wins: bool = True
-    claims: list[GroomingClaimRequest] = field(default_factory=list)
-    releases: list[GroomingClaimRequest] = field(default_factory=list)
-    budget_spent: list[GroomingBudgetSpentRequest] = field(default_factory=list)
+    claims: list[RefiningClaimRequest] = field(default_factory=list)
+    releases: list[RefiningClaimRequest] = field(default_factory=list)
+    budget_spent: list[RefiningBudgetSpentRequest] = field(default_factory=list)
     #: The calls in the order they were made, by name.
     calls: list[str] = field(default_factory=list)
 
-    def claim_grooming(self, payload: GroomingClaimRequest) -> GroomingClaimResult:
+    def claim_refining(self, payload: RefiningClaimRequest) -> RefiningClaimResult:
         self.claims.append(payload)
-        return GroomingClaimResult(**payload.model_dump(), claimed=self.wins)
+        return RefiningClaimResult(**payload.model_dump(), claimed=self.wins)
 
-    def release_grooming_claim(
-        self, payload: GroomingClaimRequest
-    ) -> GroomingClaimReleased:
+    def release_refining_claim(
+        self, payload: RefiningClaimRequest
+    ) -> RefiningClaimReleased:
         self.releases.append(payload)
         self.calls.append("release")
-        return GroomingClaimReleased(**payload.model_dump(), released=True)
+        return RefiningClaimReleased(**payload.model_dump(), released=True)
 
-    def mark_grooming_budget_spent(
-        self, payload: GroomingBudgetSpentRequest
-    ) -> GroomingBudgetSpentMarked:
+    def mark_refining_budget_spent(
+        self, payload: RefiningBudgetSpentRequest
+    ) -> RefiningBudgetSpentMarked:
         self.budget_spent.append(payload)
         self.calls.append("budget_spent")
-        return GroomingBudgetSpentMarked(**payload.model_dump())
+        return RefiningBudgetSpentMarked(**payload.model_dump())
 
-    def grooming_spend(self) -> GroomingSpend:
-        return GroomingSpend(month="2026-10", runs=len(self.runs), cost_usd=self.spent)
+    def refining_spend(self) -> RefiningSpend:
+        return RefiningSpend(month="2026-10", runs=len(self.runs), cost_usd=self.spent)
 
-    def record_grooming_run(self, payload: GroomingRunCreate) -> GroomingRunRecorded:
+    def record_refining_run(self, payload: RefiningRunCreate) -> RefiningRunRecorded:
         self.runs.append(payload)
-        return GroomingRunRecorded(
+        return RefiningRunRecorded(
             id="r",
             task_gid=payload.task_gid,
             cost_usd=payload.cost_usd,
             recorded_at=dt.datetime.now(dt.UTC),
         )
 
-    def submit_grooming_proposal(
-        self, payload: GroomingProposal
-    ) -> GroomingProposalAccepted:
+    def submit_refining_proposal(
+        self, payload: RefiningProposal
+    ) -> RefiningProposalAccepted:
         self.proposals.append(payload)
-        return GroomingProposalAccepted(message_id="m", task_gid=payload.task_gid)
+        return RefiningProposalAccepted(message_id="m", task_gid=payload.task_gid)
 
 
 def _run(api: FakeApi, outcome: Any) -> list[str]:
     """Run one job; returns what reached the model, so a test sees no paid call."""
-    groomed: list[str] = []
+    refined: list[str] = []
 
-    def fake_groom(task, **kwargs):
-        groomed.append(task.task_gid)
+    def fake_refine(task, **kwargs):
+        refined.append(task.task_gid)
         assert kwargs["board"] == ["TASK-9 · Discord commands"]
         assert kwargs["spent_this_month"]() == api.spent
         if isinstance(outcome, Exception):
@@ -102,9 +102,9 @@ def _run(api: FakeApi, outcome: Any) -> list[str]:
         api_factory=lambda: api,
         registry_loader=lambda: REGISTRY,
         repos_factory=lambda registry: object(),
-        groom_fn=fake_groom,
+        refine_fn=fake_refine,
     )
-    return groomed
+    return refined
 
 
 @pytest.mark.parametrize(
@@ -114,7 +114,7 @@ def _run(api: FakeApi, outcome: Any) -> list[str]:
         ("[1]", "not an object"),
         (_body(version=2), "version"),
         (_body(type="task.create"), "message type"),
-        (_body(payload={}), "not a valid task.groom"),
+        (_body(payload={}), "not a valid task.refine"),
     ],
 )
 def test_unreadable_messages_are_refused(body: str, reason: str) -> None:
@@ -154,10 +154,10 @@ def test_a_run_records_its_cost_and_hands_its_proposal_back(
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
-        (BudgetSpent("spent", cost_usd=0.0), "grooming budget spent"),
+        (BudgetSpent("spent", cost_usd=0.0), "refining budget spent"),
         (
-            GroomingFailed("no proposal", cost_usd=0.05, usage=Usage(10, 2)),
-            "grooming run failed",
+            RefiningFailed("no proposal", cost_usd=0.05, usage=Usage(10, 2)),
+            "refining run failed",
         ),
     ],
 )
@@ -168,7 +168,7 @@ def test_a_run_that_ends_without_a_proposal_is_reported_not_retried(
     _run(api, error)  # does not raise: the message is not redelivered
     assert api.proposals == []
     assert [r.cost_usd for r in api.runs] == ([0.05] if error.cost_usd else [])
-    # The claim is given back, so the next send can groom the same content.
+    # The claim is given back, so the next send can refine the same content.
     assert api.releases == api.claims
     ((args, kwargs),) = _no_outbound_reports
     assert args[1] == "WARN"
@@ -187,16 +187,16 @@ def test_a_run_stopped_by_the_budget_is_reported_so_it_is_sent_again(
     assert api.releases == api.claims
     ((args, kwargs),) = _no_outbound_reports
     assert args[1] == "WARN"
-    assert "grooming budget spent" in kwargs["text"]
+    assert "refining budget spent" in kwargs["text"]
 
 
 def test_a_budget_stop_that_cannot_be_reported_still_ends_the_run(
     _no_outbound_reports,
 ) -> None:
     class Refuses(FakeApi):
-        def mark_grooming_budget_spent(
-            self, payload: GroomingBudgetSpentRequest
-        ) -> GroomingBudgetSpentMarked:
+        def mark_refining_budget_spent(
+            self, payload: RefiningBudgetSpentRequest
+        ) -> RefiningBudgetSpentMarked:
             raise RuntimeError("api down")
 
     api = Refuses()
@@ -205,26 +205,26 @@ def test_a_budget_stop_that_cannot_be_reported_still_ends_the_run(
     assert api.proposals == []
     ((args, kwargs),) = _no_outbound_reports
     assert args[1] == "WARN"
-    assert "grooming budget spent" in kwargs["text"]
+    assert "refining budget spent" in kwargs["text"]
 
 
 def test_a_failed_run_is_not_reported_as_a_budget_stop(_no_outbound_reports) -> None:
     api = FakeApi()
-    _run(api, GroomingFailed("no proposal", cost_usd=0.05, usage=Usage(10, 2)))
+    _run(api, RefiningFailed("no proposal", cost_usd=0.05, usage=Usage(10, 2)))
     assert api.budget_spent == []
     assert [r.cost_usd for r in api.runs] == [0.05]
     assert api.releases == api.claims and len(api.claims) == 1
     assert api.proposals == []
     ((args, kwargs),) = _no_outbound_reports
-    assert "grooming run failed" in kwargs["text"]
+    assert "refining run failed" in kwargs["text"]
 
 
 def test_a_claim_already_held_is_acknowledged_with_nothing_paid(
     _no_outbound_reports,
 ) -> None:
     api = FakeApi(wins=False)
-    groomed = _run(api, AssertionError("the model must not be called"))
-    assert groomed == []
+    refined = _run(api, AssertionError("the model must not be called"))
+    assert refined == []
     assert api.runs == [] and api.proposals == [] and api.releases == []
     ((args, kwargs),) = _no_outbound_reports
     assert args[1] == "SUCCESS"
@@ -233,16 +233,16 @@ def test_a_claim_already_held_is_acknowledged_with_nothing_paid(
 
 def test_a_claim_that_cannot_be_asked_for_drops_the_job(_no_outbound_reports) -> None:
     class Down(FakeApi):
-        def claim_grooming(self, payload: GroomingClaimRequest) -> GroomingClaimResult:
+        def claim_refining(self, payload: RefiningClaimRequest) -> RefiningClaimResult:
             raise RuntimeError("api down")
 
     api = Down()
-    groomed = _run(api, AssertionError("the model must not be called"))
-    assert groomed == []
+    refined = _run(api, AssertionError("the model must not be called"))
+    assert refined == []
     assert api.runs == [] and api.proposals == [] and api.releases == []
     ((args, kwargs),) = _no_outbound_reports
     assert args[1] == "WARN"
-    assert "grooming claim failed" in kwargs["text"]
+    assert "refining claim failed" in kwargs["text"]
 
 
 def test_a_run_that_crashes_gives_its_claim_back() -> None:
@@ -299,17 +299,17 @@ def test_the_handler_logs_effective_settings_once_per_container(
     secret = "sk-ant-not-for-the-log"
     monkeypatch.setattr(worker, "load_secrets", lambda refresh: [])
     monkeypatch.setattr(worker, "_settings_logged", False)
-    monkeypatch.setenv("SETTINGS_ALLOWLIST", "GROOMER_MODEL,GROOMER_MAX_ROUNDS")
-    monkeypatch.delenv("GROOMER_MODEL", raising=False)
-    monkeypatch.setenv("GROOMER_MAX_ROUNDS", "3")
+    monkeypatch.setenv("SETTINGS_ALLOWLIST", "REFINER_MODEL,REFINER_MAX_ROUNDS")
+    monkeypatch.delenv("REFINER_MODEL", raising=False)
+    monkeypatch.setenv("REFINER_MAX_ROUNDS", "3")
     monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
     with caplog.at_level(logging.DEBUG):
         worker.lambda_handler({"Records": []}, None)
         worker.lambda_handler({"Records": []}, None)
 
     lines = [r.getMessage() for r in caplog.records]
-    assert lines.count(f"GROOMER_MODEL={worker.Limits().model} (default)") == 1
-    assert lines.count("GROOMER_MAX_ROUNDS=3 (set)") == 1
+    assert lines.count(f"REFINER_MODEL={worker.Limits().model} (default)") == 1
+    assert lines.count("REFINER_MAX_ROUNDS=3 (set)") == 1
     assert lines.count("ANTHROPIC_API_KEY (set)") == 1
     assert all(secret not in r.getMessage() for r in caplog.records)
     assert secret not in caplog.text

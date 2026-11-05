@@ -5,7 +5,7 @@ from the table cannot be costed, so it cannot be capped, and is refused
 rather than run.
 
 Cached input is billed apart from fresh input: a write to the cache costs
-more than plain input, and a read from it far less. The groomer caches its
+more than plain input, and a read from it far less. The refiner caches its
 fixed prompt (instructions, tools, registry), so every round after the
 first reads most of its input from the cache.
 

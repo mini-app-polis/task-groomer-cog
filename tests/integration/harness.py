@@ -17,8 +17,8 @@ from typing import Any
 
 import httpx
 
-API_BASE = "https://api.groomer.test"
-API_KEY = "task-groomer-cog-test-key"
+API_BASE = "https://api.refiner.test"
+API_KEY = "task-refiner-cog-test-key"
 REGISTRY_URL = "https://registry.test/ecosystem.yaml"
 MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 GITHUB_ZIPBALL = "https://api.github.com/repos/mini-app-polis/{repo}/zipball/{branch}"
@@ -47,7 +47,7 @@ FINGERPRINT = "d" * 64
 
 
 def job_payload(**task_overrides: Any) -> dict[str, Any]:
-    """A grooming job as the API enqueues it."""
+    """A refining job as the API enqueues it."""
     task = {
         "task_gid": TASK_GID,
         "task_id": "TASK-38",
@@ -61,9 +61,9 @@ def job_payload(**task_overrides: Any) -> dict[str, Any]:
     return {"task": task, "board": ["TASK-9 · Discord commands"]}
 
 
-def groom_body(**task_overrides: Any) -> str:
+def refine_body(**task_overrides: Any) -> str:
     return json.dumps(
-        {"type": "task.groom", "version": 1, "payload": job_payload(**task_overrides)}
+        {"type": "task.refine", "version": 1, "payload": job_payload(**task_overrides)}
     )
 
 
@@ -82,7 +82,7 @@ def sqs_record(body: str, message_id: str, *, receive_count: int = 1) -> dict:
         "messageAttributes": {},
         "md5OfBody": "ignored",
         "eventSource": "aws:sqs",
-        "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:task-groomer-jobs",
+        "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:task-refiner-jobs",
         "awsRegion": "us-east-1",
     }
 
@@ -198,7 +198,7 @@ class FakeGitHub:
 
 @dataclass
 class FakeApi:
-    """The grooming routes, recorded. ``spent`` is the month's spend so far."""
+    """The refining routes, recorded. ``spent`` is the month's spend so far."""
 
     spent: float = 0.0
     runs: list[dict[str, Any]] = field(default_factory=list)
@@ -230,7 +230,7 @@ class FakeApi:
     def claim(self, request: httpx.Request) -> httpx.Response:
         self.auth.append(request.headers.get("Authorization", ""))
         body = json.loads(request.content)
-        failed = self._fault("/v1/tasks/groomings/claims")
+        failed = self._fault("/v1/tasks/refinings/claims")
         if failed:
             return failed
         key = (body["task_gid"], body["fingerprint"])
@@ -251,7 +251,7 @@ class FakeApi:
 
     def spend(self, request: httpx.Request) -> httpx.Response:
         self.auth.append(request.headers.get("Authorization", ""))
-        return self._fault("/v1/tasks/groomings/spend") or self._ok(
+        return self._fault("/v1/tasks/refinings/spend") or self._ok(
             {
                 "month": "2026-10",
                 "runs": len(self.runs),
@@ -262,7 +262,7 @@ class FakeApi:
     def record_run(self, request: httpx.Request) -> httpx.Response:
         self.auth.append(request.headers.get("Authorization", ""))
         body = json.loads(request.content)
-        failed = self._fault("/v1/tasks/groomings/runs")
+        failed = self._fault("/v1/tasks/refinings/runs")
         if failed:
             return failed
         self.runs.append(body)
@@ -278,7 +278,7 @@ class FakeApi:
     def submit_proposal(self, request: httpx.Request) -> httpx.Response:
         self.auth.append(request.headers.get("Authorization", ""))
         body = json.loads(request.content)
-        failed = self._fault("/v1/tasks/groomings/proposals")
+        failed = self._fault("/v1/tasks/refinings/proposals")
         if failed:
             return failed
         self.proposals.append(body)

@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from mini_app_polis.asana import AsanaTaskRecord
 
-from task_groomer_cog import __main__ as cli
-from task_groomer_cog import pricing
-from task_groomer_cog.agent import RunResult
+from task_refiner_cog import __main__ as cli
+from task_refiner_cog import pricing
+from task_refiner_cog.agent import RunResult
 
 
 def _task(gid: str, name: str, section: str = "Ideas", completed: bool = False):
@@ -89,7 +89,7 @@ def logged(monkeypatch: pytest.MonkeyPatch) -> _Lines:
     return lines
 
 
-def test_a_board_dry_run_counts_the_grooming_columns_only(
+def test_a_board_dry_run_counts_the_refining_columns_only(
     board: list[dict], logged: _Lines
 ) -> None:
     assert cli.main(["--board", "--dry-run"]) == 0
@@ -125,7 +125,7 @@ def test_a_real_run_logs_the_proposal_and_cost(
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "groom",
+        "refine",
         lambda task, **kw: RunResult(
             proposal={"title": "Do one", "questions": []},
             model="claude-sonnet-5-5",

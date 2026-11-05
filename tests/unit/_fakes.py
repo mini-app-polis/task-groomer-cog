@@ -6,9 +6,9 @@ import json
 from typing import Any
 
 import httpx
-from mini_app_polis.api.contract import GroomingTask
+from mini_app_polis.api.contract import RefiningTask
 
-TASK = GroomingTask(
+TASK = RefiningTask(
     task_gid="1219754951292362",
     task_id="TASK-38",
     name="TASK-38 · idea - dashboard for TV shows and movies",

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 from _fakes import TASK
-from mini_app_polis.api.contract import GROOMING_MAX_CHILDREN, GroomingProposal
+from mini_app_polis.api.contract import REFINING_MAX_CHILDREN, RefiningProposal
 
-from task_groomer_cog.proposal import build
+from task_refiner_cog.proposal import build
 
 
 def test_a_proposal_carries_the_task_and_what_it_cost() -> None:
@@ -118,7 +118,7 @@ def test_children_are_ignored_when_splitting_is_off() -> None:
         [_child(), _child(effort="XL")],
         [_child(), _child(done_when="")],
         [_child(), "not a child"],
-        [_child()] * (GROOMING_MAX_CHILDREN + 1),
+        [_child()] * (REFINING_MAX_CHILDREN + 1),
     ],
 )
 def test_a_split_that_does_not_hold_is_dropped_whole(children: list) -> None:
@@ -167,7 +167,7 @@ def test_a_decision_record_task_is_proposed_as_cowork() -> None:
     assert proposal.executor == "cowork"
     # It round-trips as the contract's proposal, executor and all.
     sent = proposal.model_dump_json(exclude_unset=True)
-    assert GroomingProposal.model_validate_json(sent).executor == "cowork"
+    assert RefiningProposal.model_validate_json(sent).executor == "cowork"
 
 
 def test_a_decision_and_its_build_split_into_a_cowork_child_first() -> None:

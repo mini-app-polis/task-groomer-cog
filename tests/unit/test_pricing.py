@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from task_groomer_cog import pricing
-from task_groomer_cog.pricing import Usage, cost
+from task_refiner_cog import pricing
+from task_refiner_cog.pricing import Usage, cost
 
 
 def test_sonnet_prices_each_kind_of_token() -> None:

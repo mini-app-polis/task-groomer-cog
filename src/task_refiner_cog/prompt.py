@@ -11,9 +11,9 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import get_args
 
 from mini_app_polis.api.contract import (
-    GROOMING_MAX_CHILDREN,
-    GroomingExecutor,
-    GroomingTask,
+    REFINING_MAX_CHILDREN,
+    RefiningExecutor,
+    RefiningTask,
 )
 
 #: Who can do a task, by its tag. The names are the contract's; what each
@@ -33,7 +33,7 @@ EXECUTOR_MEANINGS: dict[str, str] = {
 
 def executors() -> tuple[str, ...]:
     """The executor names a task can be tagged with, from the contract."""
-    return get_args(GroomingExecutor)
+    return get_args(RefiningExecutor)
 
 
 def executor_of(tags: Collection[str]) -> str | None:
@@ -47,7 +47,7 @@ def _executor_lines() -> str:
 
 
 INSTRUCTIONS = """\
-You groom tasks on the MiniAppPolis task board. Most tasks on the board are \
+You refine tasks on the MiniAppPolis task board. Most tasks on the board are \
 worked by an agent that has only the task and the repositories it names, and \
 every task is held to the bar that agent needs: a task is ready when it \
 could be finished without asking anything. \
@@ -88,7 +88,7 @@ Who does a task. A task's executor is named by a tag on it. No tag means the age
 that has only the task and the repositories it names, and can open a pull \
 request in one of them. The tags are:
 {executor_lines}
-- If the task already has an executor tag, groom it for that executor. Do \
+- If the task already has an executor tag, refine it for that executor. Do \
 not ask who does the work or whether a worker can reach what it needs, and \
 do not propose an executor.
 - If it has none and the work needs what the agent cannot reach, propose \
@@ -177,7 +177,7 @@ def instructions(*, split: bool = False) -> str:
     """
     text = INSTRUCTIONS.replace("{executor_lines}", _executor_lines())
     if split:
-        text += "\n" + SPLITTING.replace("{max_children}", str(GROOMING_MAX_CHILDREN))
+        text += "\n" + SPLITTING.replace("{max_children}", str(REFINING_MAX_CHILDREN))
     else:
         text += "\n" + NOT_SPLITTING
     return text
@@ -200,18 +200,18 @@ def system_prompt(
     )
 
 
-def task_message(task: GroomingTask) -> str:
+def task_message(task: RefiningTask) -> str:
     """The first user message: the task as it stands."""
     problems = "\n".join(f"- {p}" for p in task.problems) or "- (none)"
     tags = ", ".join(task.tags) or "(none)"
     executor = executor_of(task.tags)
     who = (
-        f"{executor} (its tag; groom it for that executor)"
+        f"{executor} (its tag; refine it for that executor)"
         if executor
         else "the agent (no executor tag)"
     )
     message = (
-        f"Groom this task.\n\n"
+        f"Refine this task.\n\n"
         f"Name: {task.name}\n"
         f"Column: {task.section or '(unknown)'}\n"
         f"Tags: {tags}\n"
@@ -222,7 +222,7 @@ def task_message(task: GroomingTask) -> str:
     if task.comments:
         answers = "\n\n".join(f"- {c.strip()}" for c in task.comments)
         message += (
-            "\nThe owner's comments since this task's last grooming questions, "
+            "\nThe owner's comments since this task's last refining questions, "
             "oldest first. They answer those questions; use them, and do not "
             f"ask again what they settle:\n{answers}\n"
         )

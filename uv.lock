@@ -1810,7 +1810,7 @@ wheels = [
 ]
 
 [[package]]
-name = "task-groomer-cog"
+name = "task-refiner-cog"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

@@ -13,10 +13,10 @@ from typing import Any
 
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import (
-    GROOMING_MAX_CHILDREN,
-    GroomingChild,
-    GroomingProposal,
-    GroomingTask,
+    REFINING_MAX_CHILDREN,
+    RefiningChild,
+    RefiningProposal,
+    RefiningTask,
 )
 from pydantic import ValidationError
 
@@ -45,7 +45,7 @@ def _text(value: Any, limit: int) -> str | None:
     return cleaned if len(cleaned) <= limit else cleaned[: limit - 1].rstrip() + "…"
 
 
-def _children(proposed: Any) -> list[GroomingChild]:
+def _children(proposed: Any) -> list[RefiningChild]:
     """The split the model proposed, whole or not at all.
 
     Children refer to each other by position, so one dropped child would
@@ -54,7 +54,7 @@ def _children(proposed: Any) -> list[GroomingChild]:
     """
     if not isinstance(proposed, list) or not proposed:
         return []
-    if len(proposed) > GROOMING_MAX_CHILDREN:
+    if len(proposed) > REFINING_MAX_CHILDREN:
         log.warning(
             "proposal: %d children is over the cap; split dropped", len(proposed)
         )
@@ -68,7 +68,7 @@ def _children(proposed: Any) -> list[GroomingChild]:
         executor = raw.get("executor")
         try:
             children.append(
-                GroomingChild.model_validate(
+                RefiningChild.model_validate(
                     {
                         "title": _text(raw.get("title"), _LIMITS["title"]) or "",
                         "done_when": _text(raw.get("done_when"), _LIMITS["done_when"])
@@ -97,13 +97,13 @@ def _children(proposed: Any) -> list[GroomingChild]:
 
 
 def build(
-    task: GroomingTask,
+    task: RefiningTask,
     proposed: Mapping[str, Any],
     *,
     model: str,
     cost_usd: float,
     split: bool = False,
-) -> GroomingProposal:
+) -> RefiningProposal:
     """The proposal for ``task`` from the model's ``proposed`` input.
 
     Children are taken only when ``split`` is on, and only whole: a split
@@ -121,7 +121,7 @@ def build(
         )
         if q
     ][:MAX_QUESTIONS]
-    # A task already tagged keeps its tag: the groomer only names an
+    # A task already tagged keeps its tag: the refiner only names an
     # executor for a task that has none.
     executor = proposed.get("executor")
     if executor not in executors() or executor_of(task.tags) is not None:
@@ -137,7 +137,7 @@ def build(
     if children:
         try:
             # The task becomes their compound task: only its title and body.
-            return GroomingProposal(
+            return RefiningProposal(
                 **fields,
                 body=_text(proposed.get("body"), _LIMITS["body"]),
                 questions=questions,
@@ -145,7 +145,7 @@ def build(
             )
         except ValidationError as exc:
             log.warning("proposal: the split does not hold (%s); dropped", exc)
-    return GroomingProposal(
+    return RefiningProposal(
         task_gid=task.task_gid,
         fingerprint=task.fingerprint,
         title=title[: _LIMITS["title"]],

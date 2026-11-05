@@ -1,4 +1,4 @@
-"""Shared fixtures for task-groomer-cog."""
+"""Shared fixtures for task-refiner-cog."""
 
 from __future__ import annotations
 
@@ -20,6 +20,6 @@ def _no_outbound_reports(monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
         "mini_app_polis.pipeline_status.post_run_finding", fake_post_run_finding
     )
     monkeypatch.setattr(
-        "task_groomer_cog.worker.post_run_finding", fake_post_run_finding
+        "task_refiner_cog.worker.post_run_finding", fake_post_run_finding
     )
     return posted

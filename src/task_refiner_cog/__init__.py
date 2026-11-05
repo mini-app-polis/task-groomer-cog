@@ -1,7 +1,7 @@
-"""task-groomer-cog: reads a task and the code it names, and proposes what it should say.
+"""task-refiner-cog: reads a task and the code it names, and proposes what it should say.
 
-Install name:  task-groomer-cog
-Import name:   task_groomer_cog
+Install name:  task-refiner-cog
+Import name:   task_refiner_cog
 """
 
 from mini_app_polis import load_secrets

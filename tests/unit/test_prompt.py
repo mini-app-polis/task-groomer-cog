@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import get_args
 
 from _fakes import TASK
-from mini_app_polis.api.contract import GROOMING_MAX_CHILDREN, GroomingExecutor
+from mini_app_polis.api.contract import REFINING_MAX_CHILDREN, RefiningExecutor
 
-from task_groomer_cog.agent import PROPOSE, TOOLS, Limits, request_body, tools
-from task_groomer_cog.prompt import EXECUTOR_MEANINGS, system_prompt, task_message
+from task_refiner_cog.agent import PROPOSE, TOOLS, Limits, request_body, tools
+from task_refiner_cog.prompt import EXECUTOR_MEANINGS, system_prompt, task_message
 
 
 def test_the_board_list_says_what_a_done_mark_means() -> None:
@@ -25,10 +25,10 @@ def test_blocked_by_may_name_a_date_instead_of_a_question() -> None:
 
 
 def test_every_executor_in_the_contract_is_explained() -> None:
-    assert set(EXECUTOR_MEANINGS) == set(get_args(GroomingExecutor))
+    assert set(EXECUTOR_MEANINGS) == set(get_args(RefiningExecutor))
     text = system_prompt({"infra": "Terraform."}, [])
     assert "{executor_lines}" not in text
-    for name in get_args(GroomingExecutor):
+    for name in get_args(RefiningExecutor):
         assert f"  - {name}: {EXECUTOR_MEANINGS[name]}." in text
     assert "No tag means the agent" in text
     assert "Do not ask who does the work" in text
@@ -38,7 +38,7 @@ def test_every_executor_in_the_contract_is_explained() -> None:
 def test_the_task_message_names_its_executor() -> None:
     assert "Executor: the agent (no executor tag)" in task_message(TASK)
     tagged = TASK.model_copy(update={"tags": ["Cowork", "admin"]})
-    assert "Executor: cowork (its tag; groom it for that executor)" in task_message(
+    assert "Executor: cowork (its tag; refine it for that executor)" in task_message(
         tagged
     )
 
@@ -46,7 +46,7 @@ def test_the_task_message_names_its_executor() -> None:
 def test_the_propose_tool_offers_the_contracts_executors() -> None:
     (propose,) = [t for t in TOOLS if t["name"] == PROPOSE]
     schema = propose["input_schema"]["properties"]["executor"]
-    assert schema["enum"] == list(get_args(GroomingExecutor))
+    assert schema["enum"] == list(get_args(RefiningExecutor))
     assert "executor" not in propose["input_schema"]["required"]
 
 
@@ -55,7 +55,7 @@ def test_splitting_is_only_in_the_prompt_when_it_is_on() -> None:
     on = system_prompt({"infra": "Terraform."}, [], split=True)
     assert "Splitting." not in off
     assert "Splitting." in on
-    assert f"At most {GROOMING_MAX_CHILDREN} children" in on
+    assert f"At most {REFINING_MAX_CHILDREN} children" in on
     assert "blocked_by_siblings, by its position in children, counting from 0" in on
     assert "give the task itself only its title and body" in on
     assert "A task already in one of the two shapes is never split" in on
@@ -68,9 +68,9 @@ def test_the_propose_tool_takes_children_only_when_splitting() -> None:
 
     assert "children" not in propose(tools())
     children = propose(tools(split=True))["children"]
-    assert children["maxItems"] == GROOMING_MAX_CHILDREN
+    assert children["maxItems"] == REFINING_MAX_CHILDREN
     item = children["items"]
-    assert item["properties"]["executor"]["enum"] == list(get_args(GroomingExecutor))
+    assert item["properties"]["executor"]["enum"] == list(get_args(RefiningExecutor))
     assert set(item["required"]) == {
         "title",
         "done_when",
@@ -98,9 +98,9 @@ def test_the_first_request_follows_the_split_setting() -> None:
 
 
 def test_the_split_setting_is_read_from_the_environment(monkeypatch) -> None:
-    monkeypatch.delenv("GROOMER_SPLIT", raising=False)
+    monkeypatch.delenv("REFINER_SPLIT", raising=False)
     assert Limits.from_env().split is False
-    monkeypatch.setenv("GROOMER_SPLIT", "true")
+    monkeypatch.setenv("REFINER_SPLIT", "true")
     assert Limits.from_env().split is True
 
 
@@ -151,7 +151,7 @@ def test_the_owners_decision_is_cowork_work() -> None:
     )
 
 
-def test_the_groomer_polishes_what_a_person_wrote_rather_than_rewriting_it() -> None:
+def test_the_refiner_polishes_what_a_person_wrote_rather_than_rewriting_it() -> None:
     text = system_prompt({}, [])
     assert "Polish, do not rewrite." in text
     assert "never again about what the task or" in text
