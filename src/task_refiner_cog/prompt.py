@@ -65,7 +65,9 @@ checks someone could run or see: a test that passes, a response a route \
 gives, a file that exists, a behaviour on a page. Not the steps to get there.
 - where: the repositories the work is in, by their exact names from the \
 registry below, separated by commas, each optionally followed by the paths \
-inside it in parentheses. Only names from the registry.
+inside it in parentheses. Only names from the registry. "None" only for a \
+cowork or person task: an agent task always names a repository, so a task \
+with no repository needs executor cowork or person.
 - constraints: what the work must not do or must keep true, as the task and \
 the code show it. "None" when there are none.
 - effort: S (a small change, one pull request), M (one pull request across \

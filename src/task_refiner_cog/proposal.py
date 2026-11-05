@@ -22,6 +22,18 @@ from pydantic import ValidationError
 
 from .prompt import executor_of, executors
 
+#: What a Where says when it names no repository, as the board's linter
+#: reads it. Only a cowork or person task may name none.
+NONE_WORDS: frozenset[str] = frozenset({"none", "-", "\u2014", "\u2013", "n/a"})
+
+#: Asked when a proposal leaves a task the agent's but names no repository:
+#: the agent works only in a repository, and which other executor fits is the
+#: owner's to say.
+NO_REPOSITORY_QUESTION = (
+    "This task names no repository, so an agent cannot work it. Is it for a "
+    "working session with you (cowork) or for you alone (person)?"
+)
+
 _LIMITS = {
     "title": 300,
     "done_when": 5000,
@@ -126,6 +138,13 @@ def build(
     executor = proposed.get("executor")
     if executor not in executors() or executor_of(task.tags) is not None:
         executor = None
+    where = _text(proposed.get("where"), _LIMITS["where"])
+    # An agent task that names no repository: a none-word always, or a Where
+    # left out with nothing else asked, since then nothing says why.
+    names_none = where is not None and where.lower() in NONE_WORDS
+    left_out = where is None and not questions
+    if executor is None and executor_of(task.tags) is None and (names_none or left_out):
+        questions = [*questions, NO_REPOSITORY_QUESTION][-MAX_QUESTIONS:]
     children = _children(proposed.get("children")) if split else []
     fields: dict[str, Any] = {
         "task_gid": task.task_gid,
@@ -150,7 +169,7 @@ def build(
         fingerprint=task.fingerprint,
         title=title[: _LIMITS["title"]],
         done_when=_text(proposed.get("done_when"), _LIMITS["done_when"]),
-        where=_text(proposed.get("where"), _LIMITS["where"]),
+        where=where,
         constraints=_text(proposed.get("constraints"), _LIMITS["constraints"]),
         effort=effort if effort in ("S", "M", "L") else None,
         blocked_by=_text(proposed.get("blocked_by"), _LIMITS["blocked_by"]),

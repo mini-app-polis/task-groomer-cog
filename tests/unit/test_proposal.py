@@ -4,7 +4,7 @@ import pytest
 from _fakes import TASK
 from mini_app_polis.api.contract import REFINING_MAX_CHILDREN, RefiningProposal
 
-from task_refiner_cog.proposal import build
+from task_refiner_cog.proposal import NO_REPOSITORY_QUESTION, build
 
 
 def test_a_proposal_carries_the_task_and_what_it_cost() -> None:
@@ -184,3 +184,37 @@ def test_a_decision_and_its_build_split_into_a_cowork_child_first() -> None:
     assert decision.executor == "cowork"
     assert build_child.executor is None
     assert build_child.blocked_by_siblings == [0]
+
+
+@pytest.mark.parametrize("where", [None, "", "None", "n/a", "-"])
+def test_an_agent_task_with_no_repository_asks_which_executor(
+    where: str | None,
+) -> None:
+    proposal = build(TASK, {"title": "T", "where": where}, model="m", cost_usd=0)
+    assert proposal.executor is None
+    assert proposal.questions == [NO_REPOSITORY_QUESTION]
+
+
+@pytest.mark.parametrize("executor", ["cowork", "person"])
+def test_a_cowork_or_person_task_may_name_no_repository(executor: str) -> None:
+    proposal = build(
+        TASK,
+        {"title": "T", "where": "None", "executor": executor},
+        model="m",
+        cost_usd=0,
+    )
+    assert proposal.executor == executor
+    assert proposal.questions == []
+
+
+def test_a_task_tagged_for_a_person_may_name_no_repository() -> None:
+    tagged = TASK.model_copy(update={"tags": ["person"]})
+    proposal = build(tagged, {"title": "T", "where": "None"}, model="m", cost_usd=0)
+    assert proposal.questions == []
+
+
+def test_an_agent_task_naming_a_repository_asks_nothing() -> None:
+    proposal = build(
+        TASK, {"title": "T", "where": "task-manager-cog"}, model="m", cost_usd=0
+    )
+    assert proposal.questions == []
