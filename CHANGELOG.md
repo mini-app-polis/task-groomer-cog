@@ -1,3 +1,10 @@
+## [1.10.2](https://github.com/mini-app-polis/task-refiner-cog/compare/v1.10.1...v1.10.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* **proposal:** ask who works a task that names no repository ([ff0c383](https://github.com/mini-app-polis/task-refiner-cog/commit/ff0c38332c7b9a4fd5e96a8ab81b3b1c3d6aa6b4))
+
 ## [1.10.1](https://github.com/mini-app-polis/task-refiner-cog/compare/v1.10.0...v1.10.1) (2026-11-05)
 
 
