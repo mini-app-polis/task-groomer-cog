@@ -39,6 +39,12 @@ repository without one), in memory. It ends with one `propose` call: the
 title, Done when, Where, Constraints, Effort, Blocked by, a body, and
 questions for anything it could not settle from the task and the code.
 
+**No repository.** An agent works only in a repository, so a proposal that
+leaves a task the agent's while its Where says `None` (or leaves Where out
+with nothing else asked) also asks whether the task is for a working session
+(`cowork`) or for the owner alone (`person`), rather than send it to Ready
+for an agent that cannot work it.
+
 **Blocked by** may name dates as well as tasks: a task that can only be
 done after a date (a scheduled run, an event) is given the date
 (`YYYY-MM-DD`, a UTC day) rather than a question about how to express the
