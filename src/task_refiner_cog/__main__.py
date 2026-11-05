@@ -1,20 +1,20 @@
-"""Run the groomer by hand: estimate first, then groom one task for real.
+"""Run the refiner by hand: estimate first, then refine one task for real.
 
-    doppler run -- uv run python -m task_groomer_cog --dry-run --task <gid>
-    doppler run -- uv run python -m task_groomer_cog --dry-run --board
-    doppler run -- uv run python -m task_groomer_cog --task <gid>
+    doppler run -- uv run python -m task_refiner_cog --dry-run --task <gid>
+    doppler run -- uv run python -m task_refiner_cog --dry-run --board
+    doppler run -- uv run python -m task_refiner_cog --task <gid>
 
 The task is read from the board (``ASANA_ACCESS_TOKEN``,
 ``ASANA_INBOX_PROJECT_ID``), only read. ``--dry-run`` builds each task's
 real first request and counts it with Anthropic's free token-counting
 endpoint, then prices a short run and a long one: no model call, nothing
-spent. ``--board`` estimates every open task in the grooming columns, which
+spent. ``--board`` estimates every open task in the refining columns, which
 is an upper bound, since the sweep only sends tasks that are not ready.
 
-With ``GROOMER_SPLIT=true`` the estimate's long run allows for a split's
+With ``REFINER_SPLIT=true`` the estimate's long run allows for a split's
 larger propose call.
 
-Without ``--dry-run`` the one task is groomed for real: the run is paid,
+Without ``--dry-run`` the one task is refined for real: the run is paid,
 and its proposal and cost are logged, with the children of a split listed
 one per line. Nothing is written to the board,
 and nothing is recorded with the API, so the run does not count against
@@ -31,18 +31,18 @@ import sys
 from dataclasses import dataclass
 
 from mini_app_polis import logger as logger_mod
-from mini_app_polis.api.contract import GroomingTask
+from mini_app_polis.api.contract import RefiningTask
 from mini_app_polis.asana import AsanaClient, AsanaTaskRecord
 
 from . import pricing
-from .agent import Limits, count_tokens, groom, request_body
+from .agent import Limits, count_tokens, refine, request_body
 from .proposal import build
 from .registry import load_registry
 from .repos import Repos
 
 log = logger_mod.get_logger()
 
-GROOM_SECTIONS = ("ideas", "refining", "blocked")
+REFINE_SECTIONS = ("ideas", "refining", "blocked")
 DO_NOT_WORK = "do not work"
 
 #: The shape of a short run and of a long one, for the estimate: rounds,
@@ -101,10 +101,10 @@ def estimate(
     return Estimate(first, run(*SHORT, PROPOSE_OUTPUT), run(*LONG, long_propose))
 
 
-def as_grooming_task(task: AsanaTaskRecord) -> GroomingTask:
-    """The task as a groomer is given it, from its record on the board."""
+def as_refining_task(task: AsanaTaskRecord) -> RefiningTask:
+    """The task as a refiner is given it, from its record on the board."""
     content = f"{task.name}\n{task.notes}"
-    return GroomingTask(
+    return RefiningTask(
         task_gid=task.gid,
         task_id=task.name.split(" · ", 1)[0] if " · " in task.name else None,
         name=task.name,
@@ -116,8 +116,8 @@ def as_grooming_task(task: AsanaTaskRecord) -> GroomingTask:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Estimate one task or the board, or groom one task for real."""
-    parser = argparse.ArgumentParser(prog="python -m task_groomer_cog")
+    """Estimate one task or the board, or refine one task for real."""
+    parser = argparse.ArgumentParser(prog="python -m task_refiner_cog")
     which = parser.add_mutually_exclusive_group(required=True)
     which.add_argument("--task", help="the task's gid on the board")
     which.add_argument("--board", action="store_true", help="every open task")
@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         chosen = [
             t
             for t in tasks
-            if (t.section_name or "").lower() in GROOM_SECTIONS
+            if (t.section_name or "").lower() in REFINE_SECTIONS
             and DO_NOT_WORK not in t.name.lower()
         ]
 
@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         low = high = 0.0
         for task in chosen:
-            job = as_grooming_task(task)
+            job = as_refining_task(task)
             others = [n for n in board if n != task.name]
             first = count_tokens(request_body(job, registry, others, limits))
             guess = estimate(
@@ -175,8 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     (task,) = chosen
-    job = as_grooming_task(task)
-    result = groom(
+    job = as_refining_task(task)
+    result = refine(
         job,
         registry=registry,
         board=[n for n in board if n != task.name],

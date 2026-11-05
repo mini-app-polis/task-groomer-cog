@@ -2,7 +2,7 @@
 
 ecosystem-standards' ``ecosystem.yaml`` lists every repository
 (``services[].id``) with a description of what it is and how it runs. The
-groomer gives the model those descriptions, so it can tell which
+refiner gives the model those descriptions, so it can tell which
 repositories a vague task is about, and refuses to open a repository that
 is not listed.
 

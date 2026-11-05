@@ -6,7 +6,7 @@ import zipfile
 import httpx
 import pytest
 
-from task_groomer_cog.repos import RepoError, Repos
+from task_refiner_cog.repos import RepoError, Repos
 
 FILES = {
     "README.md": "# infra\nTerraform for the fleet.\n",

@@ -1,36 +1,36 @@
-"""The Lambda entrypoint: one grooming job in, one proposal out.
+"""The Lambda entrypoint: one refining job in, one proposal out.
 
-task-groomer-cog runs on Lambda behind its own queue, declared in
+task-refiner-cog runs on Lambda behind its own queue, declared in
 mini-app-polis/infra.
-The API is the only producer: task-manager-cog asks it to groom a task
-(``POST /v1/tasks/groomings/jobs``), and it enqueues one message:
+The API is the only producer: task-manager-cog asks it to refine a task
+(``POST /v1/tasks/refinings/jobs``), and it enqueues one message:
 
-    {"type": "task.groom", "version": 1, "payload": <GroomingJobRequest>}
+    {"type": "task.refine", "version": 1, "payload": <RefiningJobRequest>}
 
 A job is one paid run (agent.py). Its cost is recorded with the API
 whatever the outcome, and its proposal goes back through the API
-(``POST /v1/tasks/groomings/proposals``) to task-manager-cog, which applies
+(``POST /v1/tasks/refinings/proposals``) to task-manager-cog, which applies
 it. This cog never writes to the board.
 
 **No automatic retries.** A redelivered job would pay for the run again, so
 the queue delivers each message once (``max_receive_count = 1`` in
 mini-app-polis/infra) and a job that fails is reported and dropped. The
-task is groomed again when it next changes.
+task is refined again when it next changes.
 
 **One paid run per job, even when SQS delivers it twice.** Before the model
 is called, the run claims the task and the fingerprint of the content it was
-sent for (``POST /v1/tasks/groomings/claims``). The API's unique key on that
+sent for (``POST /v1/tasks/refinings/claims``). The API's unique key on that
 pair means one delivery wins; another, on this container or another, finds
 the claim held and is acknowledged with nothing paid, recorded or proposed.
 A run that fails gives its claim back
-(``POST /v1/tasks/groomings/claims/release``), so the next send of the same
+(``POST /v1/tasks/refinings/claims/release``), so the next send of the same
 content can claim it; a run that succeeds keeps it. If the claim cannot be
 asked for at all, the job is reported and dropped, never run unclaimed.
 
 **A run stopped by the budget is sent again.** The month's spend is checked
 before every request, the first included, so with the cap spent the run
 makes no model request. A run stopped that way reports the stop for the task
-and its content's fingerprint (``POST /v1/tasks/groomings/budget-spent``)
+and its content's fingerprint (``POST /v1/tasks/refinings/budget-spent``)
 before it gives its claim back, and the API has the job sent again once
 there is budget, without waiting for the task to change. If the report
 fails it is logged and the run ends as it would have. Any other failed run
@@ -50,18 +50,18 @@ from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api import KaianoApiClient
 from mini_app_polis.api.contract import (
-    GroomingBudgetSpentMarked,
-    GroomingBudgetSpentRequest,
-    GroomingClaimReleased,
-    GroomingClaimRequest,
-    GroomingClaimResult,
-    GroomingJobRequest,
-    GroomingProposal,
-    GroomingProposalAccepted,
-    GroomingRunCreate,
-    GroomingRunRecorded,
-    GroomingSpend,
-    TaskGroomMessage,
+    RefiningBudgetSpentMarked,
+    RefiningBudgetSpentRequest,
+    RefiningClaimReleased,
+    RefiningClaimRequest,
+    RefiningClaimResult,
+    RefiningJobRequest,
+    RefiningProposal,
+    RefiningProposalAccepted,
+    RefiningRunCreate,
+    RefiningRunRecorded,
+    RefiningSpend,
+    TaskRefineMessage,
 )
 from mini_app_polis.environment import log_settings
 from mini_app_polis.lambda_worker import (
@@ -75,7 +75,7 @@ from mini_app_polis.pipeline_status import post_run_finding, run_report
 from mini_app_polis.sentry import init_sentry
 
 from ._version import __version__
-from .agent import BudgetSpent, GroomingFailed, Limits, groom
+from .agent import BudgetSpent, Limits, RefiningFailed, refine
 from .proposal import build
 from .registry import DEFAULT_URL as DEFAULT_REGISTRY_URL
 from .registry import load_registry
@@ -83,11 +83,11 @@ from .repos import Repos
 
 log = logger_mod.get_logger()
 
-REPO = "task-groomer-cog"
-FLOW_NAME = "groom-task"
+REPO = "task-refiner-cog"
+FLOW_NAME = "refine-task"
 
 #: This cog's name to the API, which picks its key.
-MACHINE_NAME = "task-groomer-cog"
+MACHINE_NAME = "task-refiner-cog"
 
 #: How long before the function's timeout a run is stopped, leaving room for
 #: the run report and the handler's return.
@@ -99,59 +99,59 @@ init_sentry(REPO)
 _settings_logged = False
 
 
-class GroomingApi(Protocol):
+class RefiningApi(Protocol):
     """The API calls a run makes: the API, or a fake in a test."""
 
-    def claim_grooming(self, payload: GroomingClaimRequest) -> GroomingClaimResult:
+    def claim_refining(self, payload: RefiningClaimRequest) -> RefiningClaimResult:
         """Claim one job before the model is called; false when already held."""
         ...
 
-    def release_grooming_claim(
-        self, payload: GroomingClaimRequest
-    ) -> GroomingClaimReleased:
+    def release_refining_claim(
+        self, payload: RefiningClaimRequest
+    ) -> RefiningClaimReleased:
         """Give a claim back after a run that failed."""
         ...
 
-    def mark_grooming_budget_spent(
-        self, payload: GroomingBudgetSpentRequest
-    ) -> GroomingBudgetSpentMarked:
+    def mark_refining_budget_spent(
+        self, payload: RefiningBudgetSpentRequest
+    ) -> RefiningBudgetSpentMarked:
         """Report a run stopped by the budget, so the job is sent again."""
         ...
 
-    def grooming_spend(self) -> GroomingSpend:
-        """This month's paid grooming so far, for the cap."""
+    def refining_spend(self) -> RefiningSpend:
+        """This month's paid refining so far, for the cap."""
         ...
 
-    def record_grooming_run(self, payload: GroomingRunCreate) -> GroomingRunRecorded:
+    def record_refining_run(self, payload: RefiningRunCreate) -> RefiningRunRecorded:
         """Record one paid run and its cost."""
         ...
 
-    def submit_grooming_proposal(
-        self, payload: GroomingProposal
-    ) -> GroomingProposalAccepted:
+    def submit_refining_proposal(
+        self, payload: RefiningProposal
+    ) -> RefiningProposalAccepted:
         """Hand a proposal back for the task manager to apply."""
         ...
 
 
-def _api() -> GroomingApi:
+def _api() -> RefiningApi:
     return KaianoApiClient.from_env(MACHINE_NAME)
 
 
-def parse_message(body: str) -> GroomingJobRequest:
+def parse_message(body: str) -> RefiningJobRequest:
     """The job a message carries. Raises UnprocessableMessage otherwise."""
-    return parse_queue_message(body, TaskGroomMessage).payload
+    return parse_queue_message(body, TaskRefineMessage).payload
 
 
-def groom_task(
-    job: GroomingJobRequest,
+def refine_task(
+    job: RefiningJobRequest,
     *,
     run_id: str,
-    api_factory: Callable[[], GroomingApi] = _api,
+    api_factory: Callable[[], RefiningApi] = _api,
     registry_loader: Callable[[], Mapping[str, str]] = load_registry,
     repos_factory: Callable[[Mapping[str, str]], Repos] = Repos,
-    groom_fn: Callable[..., Any] = groom,
+    refine_fn: Callable[..., Any] = refine,
 ) -> None:
-    """Groom one task and hand the proposal back. Never redelivered.
+    """Refine one task and hand the proposal back. Never redelivered.
 
     The job is claimed first, so a duplicate delivery pays for nothing, and
     the claim is given back if the run fails.
@@ -161,20 +161,20 @@ def groom_task(
     limits = Limits.from_env()
     with run_report(FLOW_NAME, repo=REPO, run_id=run_id, version=__version__) as report:
         api = api_factory()
-        claim = GroomingClaimRequest(
+        claim = RefiningClaimRequest(
             task_gid=task.task_gid, fingerprint=task.fingerprint
         )
         try:
-            claimed = api.claim_grooming(claim).claimed
-        except Exception as exc:  # noqa: BLE001 — never groom unclaimed
-            report.issue("grooming claim failed", label, detail=str(exc))
+            claimed = api.claim_refining(claim).claimed
+        except Exception as exc:  # noqa: BLE001 — never refine unclaimed
+            report.issue("refining claim failed", label, detail=str(exc))
             return
         if not claimed:
             report.note("already claimed: a duplicate delivery", label)
             return
 
         try:
-            _groom_claimed(
+            _refine_claimed(
                 api,
                 job,
                 claim,
@@ -183,47 +183,47 @@ def groom_task(
                 limits=limits,
                 registry_loader=registry_loader,
                 repos_factory=repos_factory,
-                groom_fn=groom_fn,
+                refine_fn=refine_fn,
             )
         except BaseException:
             _release(api, claim)
             raise
 
 
-def _groom_claimed(
-    api: GroomingApi,
-    job: GroomingJobRequest,
-    claim: GroomingClaimRequest,
+def _refine_claimed(
+    api: RefiningApi,
+    job: RefiningJobRequest,
+    claim: RefiningClaimRequest,
     *,
     report: Any,
     label: str,
     limits: Limits,
     registry_loader: Callable[[], Mapping[str, str]],
     repos_factory: Callable[[Mapping[str, str]], Repos],
-    groom_fn: Callable[..., Any],
+    refine_fn: Callable[..., Any],
 ) -> None:
     """The paid run, once the job is claimed. A run that fails releases it."""
     task = job.task
     registry = registry_loader()
     try:
-        result = groom_fn(
+        result = refine_fn(
             task,
             registry=registry,
             board=job.board,
             repos=repos_factory(registry),
-            spent_this_month=lambda: api.grooming_spend().cost_usd,
+            spent_this_month=lambda: api.refining_spend().cost_usd,
             limits=limits,
         )
     except BudgetSpent as exc:
         _record(api, task.task_gid, limits.model, exc.usage, exc.cost_usd)
         _mark_budget_spent(api, claim)
         _release(api, claim)
-        report.issue("grooming budget spent", label, detail=str(exc))
+        report.issue("refining budget spent", label, detail=str(exc))
         return
-    except GroomingFailed as exc:
+    except RefiningFailed as exc:
         _record(api, task.task_gid, limits.model, exc.usage, exc.cost_usd)
         _release(api, claim)
-        report.issue("grooming run failed", label, detail=str(exc))
+        report.issue("refining run failed", label, detail=str(exc))
         return
 
     _record(api, task.task_gid, result.model, result.usage, result.cost_usd)
@@ -234,28 +234,28 @@ def _groom_claimed(
         cost_usd=result.cost_usd,
         split=limits.split,
     )
-    api.submit_grooming_proposal(proposal)
+    api.submit_refining_proposal(proposal)
 
     report.count("rounds", result.rounds)
     report.count("cost_usd", f"{result.cost_usd:.4f}")
     report.count("questions", len(proposal.questions))
     report.count("children", len(proposal.children))
-    report.updated("grooming proposal", f"{label} · {proposal.title}")
+    report.updated("refining proposal", f"{label} · {proposal.title}")
 
 
-def _release(api: GroomingApi, claim: GroomingClaimRequest) -> None:
+def _release(api: RefiningApi, claim: RefiningClaimRequest) -> None:
     """Give the claim back. A failure here is logged, never raised over the run's."""
     try:
-        api.release_grooming_claim(claim)
+        api.release_refining_claim(claim)
     except Exception:  # noqa: BLE001 — the run's own outcome is what matters
         log.exception("worker: could not release the claim on %s", claim.task_gid)
 
 
-def _mark_budget_spent(api: GroomingApi, claim: GroomingClaimRequest) -> None:
+def _mark_budget_spent(api: RefiningApi, claim: RefiningClaimRequest) -> None:
     """Report a stop by the budget. A failure here is logged, never raised."""
     try:
-        api.mark_grooming_budget_spent(
-            GroomingBudgetSpentRequest(
+        api.mark_refining_budget_spent(
+            RefiningBudgetSpentRequest(
                 task_gid=claim.task_gid, fingerprint=claim.fingerprint
             )
         )
@@ -264,13 +264,13 @@ def _mark_budget_spent(api: GroomingApi, claim: GroomingClaimRequest) -> None:
 
 
 def _record(
-    api: GroomingApi, task_gid: str, model: str, usage: Any, cost_usd: float
+    api: RefiningApi, task_gid: str, model: str, usage: Any, cost_usd: float
 ) -> None:
     """Record a run's cost. A run that cost nothing made no request."""
     if not cost_usd:
         return
-    api.record_grooming_run(
-        GroomingRunCreate(
+    api.record_refining_run(
+        RefiningRunCreate(
             task_gid=task_gid,
             model=model,
             input_tokens=getattr(usage, "prompt_tokens", 0),
@@ -289,16 +289,16 @@ def effective_settings() -> dict[str, Any]:
     limits = Limits.from_env()
     return {
         "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
-        "TASK_GROOMER_COG_API_KEY": os.environ.get("TASK_GROOMER_COG_API_KEY"),
+        "TASK_REFINER_COG_API_KEY": os.environ.get("TASK_REFINER_COG_API_KEY"),
         "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
         "ECOSYSTEM_YAML_URL": (os.environ.get("ECOSYSTEM_YAML_URL") or "").strip()
         or DEFAULT_REGISTRY_URL,
-        "GROOMER_MODEL": limits.model,
-        "GROOMER_MAX_ROUNDS": limits.max_rounds,
-        "GROOMER_MAX_INPUT_TOKENS": limits.max_input_tokens,
-        "GROOMER_MAX_OUTPUT_TOKENS": limits.max_output_tokens,
-        "GROOMER_MONTHLY_CAP_USD": limits.monthly_cap_usd,
-        "GROOMER_SPLIT": limits.split,
+        "REFINER_MODEL": limits.model,
+        "REFINER_MAX_ROUNDS": limits.max_rounds,
+        "REFINER_MAX_INPUT_TOKENS": limits.max_input_tokens,
+        "REFINER_MAX_OUTPUT_TOKENS": limits.max_output_tokens,
+        "REFINER_MONTHLY_CAP_USD": limits.monthly_cap_usd,
+        "REFINER_SPLIT": limits.split,
     }
 
 
@@ -321,8 +321,8 @@ def _log_settings_once() -> None:
 def process_message(body: str, *, run_id: str, **kwargs: Any) -> None:
     """Handle one message."""
     job = parse_message(body)
-    log.info("worker: run %s grooms task %s", run_id, job.task.task_gid)
-    groom_task(job, run_id=run_id, **kwargs)
+    log.info("worker: run %s refines task %s", run_id, job.task.task_gid)
+    refine_task(job, run_id=run_id, **kwargs)
 
 
 def _report_unprocessable(exc: BaseException, run_id: str) -> None:
@@ -359,7 +359,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         message_id = str(record.get("messageId") or "")
         attempt = (record.get("attributes") or {}).get("ApproximateReceiveCount", "?")
         with timing.invocation(
-            cog="task-groomer", source="grooming", attempt=attempt
+            cog="task-refiner", source="refining", attempt=attempt
         ) as timed:
             try:
                 with deadline(context, margin_seconds=DEADLINE_MARGIN_SECONDS):

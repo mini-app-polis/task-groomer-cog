@@ -4,8 +4,8 @@ import httpx
 import pytest
 from _fakes import PROPOSAL_INPUT, REGISTRY, TASK, Script, text_reply, tool_use, usage
 
-from task_groomer_cog import agent
-from task_groomer_cog.agent import BudgetSpent, GroomingFailed, Limits, groom
+from task_refiner_cog import agent
+from task_refiner_cog.agent import BudgetSpent, Limits, RefiningFailed, refine
 
 
 class FakeRepos:
@@ -21,7 +21,7 @@ class FakeRepos:
         return "1: hello"
 
     def search(self, repo: str, pattern: str, path: str = "") -> str:
-        from task_groomer_cog.repos import RepoError
+        from task_refiner_cog.repos import RepoError
 
         raise RepoError(f"{repo} is not a repository in the registry.")
 
@@ -32,9 +32,9 @@ def key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent.time, "sleep", lambda s: None)
 
 
-def _groom(script: Script, *, limits: Limits | None = None, spent: float = 0.0):
+def _refine(script: Script, *, limits: Limits | None = None, spent: float = 0.0):
     repos = FakeRepos()
-    result = groom(
+    result = refine(
         TASK,
         registry=REGISTRY,
         board=["TASK-9 · Discord commands"],
@@ -51,7 +51,7 @@ def test_a_run_reads_then_proposes() -> None:
         tool_use("list_files", {"repo": "infra"}),
         tool_use("propose", PROPOSAL_INPUT, id_="t2"),
     )
-    result, repos = _groom(script)
+    result, repos = _refine(script)
 
     assert result.proposal == PROPOSAL_INPUT
     assert result.rounds == 2
@@ -73,7 +73,7 @@ def test_a_tool_error_goes_back_to_the_model() -> None:
         tool_use("search", {"repo": "infra", "pattern": "x"}),
         tool_use("propose", PROPOSAL_INPUT, id_="t2"),
     )
-    _groom(script)
+    _refine(script)
     result_block = script.bodies[1]["messages"][-1]["content"][0]
     assert result_block["is_error"] is True
     assert "not a repository" in result_block["content"]
@@ -84,7 +84,7 @@ def test_the_last_round_must_propose() -> None:
         tool_use("list_files", {"repo": "infra"}),
         tool_use("propose", PROPOSAL_INPUT, id_="t2"),
     )
-    _groom(script, limits=Limits(max_rounds=2))
+    _refine(script, limits=Limits(max_rounds=2))
     second = script.bodies[1]
     assert "tool_choice" not in second
     assert second["messages"][-1]["content"][-1] == {
@@ -96,7 +96,7 @@ def test_the_last_round_must_propose() -> None:
 
 def test_a_one_round_run_asks_for_the_proposal_in_the_task_message() -> None:
     script = Script(tool_use("propose", PROPOSAL_INPUT))
-    _groom(script, limits=Limits(max_rounds=1))
+    _refine(script, limits=Limits(max_rounds=1))
     only = script.bodies[0]
     assert "tool_choice" not in only
     assert only["messages"][0]["content"].endswith(agent.PROPOSE_NOW)
@@ -106,7 +106,7 @@ def test_nearing_the_input_cap_asks_for_the_proposal() -> None:
     big = tool_use("list_files", {"repo": "infra"})
     big["usage"] = usage(input_tokens=900)
     script = Script(big, tool_use("propose", PROPOSAL_INPUT, id_="t2"))
-    _groom(script, limits=Limits(max_input_tokens=1000))
+    _refine(script, limits=Limits(max_input_tokens=1000))
     second = script.bodies[1]
     assert "tool_choice" not in second
     assert second["messages"][-1]["content"][-1]["text"] == agent.PROPOSE_NOW
@@ -114,7 +114,7 @@ def test_nearing_the_input_cap_asks_for_the_proposal() -> None:
 
 def test_a_reply_without_a_tool_is_told_to_propose() -> None:
     script = Script(text_reply("I think…"), tool_use("propose", PROPOSAL_INPUT))
-    result, _ = _groom(script)
+    result, _ = _refine(script)
     assert result.proposal == PROPOSAL_INPUT
     assert script.bodies[1]["messages"][-1]["content"] == "Call the propose tool now."
     assert "tool_choice" not in script.bodies[1]
@@ -122,48 +122,48 @@ def test_a_reply_without_a_tool_is_told_to_propose() -> None:
 
 def test_no_proposal_within_the_rounds_fails_with_its_cost() -> None:
     script = Script(*[tool_use("list_files", {"repo": "infra"})] * 2)
-    with pytest.raises(GroomingFailed) as raised:
+    with pytest.raises(RefiningFailed) as raised:
         # The last round asks for the proposal; this script still reads.
-        _groom(script, limits=Limits(max_rounds=2))
+        _refine(script, limits=Limits(max_rounds=2))
     assert raised.value.cost_usd > 0
 
 
 def test_a_spent_budget_stops_before_any_request() -> None:
     script = Script()
     with pytest.raises(BudgetSpent):
-        _groom(script, spent=20.0)
+        _refine(script, spent=20.0)
     assert script.bodies == []
 
 
 def test_the_budget_counts_this_runs_cost_too() -> None:
     script = Script(tool_use("list_files", {"repo": "infra"}))
     with pytest.raises(BudgetSpent) as raised:
-        _groom(script, spent=19.999)
+        _refine(script, spent=19.999)
     assert raised.value.cost_usd > 0
 
 
 def test_a_transient_failure_is_tried_again() -> None:
     script = Script(httpx.Response(529), tool_use("propose", PROPOSAL_INPUT))
-    result, _ = _groom(script)
+    result, _ = _refine(script)
     assert result.proposal == PROPOSAL_INPUT
 
 
 def test_a_refusal_fails_the_run() -> None:
     script = Script(httpx.Response(400, text="bad request"))
-    with pytest.raises(GroomingFailed, match="answered 400"):
-        _groom(script)
+    with pytest.raises(RefiningFailed, match="answered 400"):
+        _refine(script)
 
 
 def test_an_unpriced_model_is_refused_before_any_request() -> None:
     script = Script()
     with pytest.raises(Exception, match="has no price"):
-        _groom(script, limits=Limits(model="claude-mystery"))
+        _refine(script, limits=Limits(model="claude-mystery"))
 
 
 def test_without_a_key_nothing_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY")
-    with pytest.raises(GroomingFailed, match="ANTHROPIC_API_KEY"):
-        _groom(Script())
+    with pytest.raises(RefiningFailed, match="ANTHROPIC_API_KEY"):
+        _refine(Script())
 
 
 def test_count_tokens_sends_only_what_it_counts() -> None:
@@ -174,9 +174,9 @@ def test_count_tokens_sends_only_what_it_counts() -> None:
 
 
 def test_limits_come_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GROOMER_MODEL", "claude-haiku-5-5")
-    monkeypatch.setenv("GROOMER_MAX_ROUNDS", "4")
-    monkeypatch.setenv("GROOMER_MONTHLY_CAP_USD", "7.5")
+    monkeypatch.setenv("REFINER_MODEL", "claude-haiku-5-5")
+    monkeypatch.setenv("REFINER_MAX_ROUNDS", "4")
+    monkeypatch.setenv("REFINER_MONTHLY_CAP_USD", "7.5")
     limits = Limits.from_env()
     assert (limits.model, limits.max_rounds, limits.monthly_cap_usd) == (
         "claude-haiku-5-5",
@@ -188,13 +188,13 @@ def test_limits_come_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_reply_cut_off_at_max_tokens_fails_the_run() -> None:
     cut = tool_use("propose", {"title": "Half"})
     cut["stop_reason"] = "max_tokens"
-    with pytest.raises(GroomingFailed, match="max_tokens") as raised:
-        _groom(Script(cut))
+    with pytest.raises(RefiningFailed, match="max_tokens") as raised:
+        _refine(Script(cut))
     assert raised.value.cost_usd > 0
 
 
 def test_the_owners_answers_reach_the_model() -> None:
-    from task_groomer_cog.prompt import task_message
+    from task_refiner_cog.prompt import task_message
 
     answered = TASK.model_copy(update={"comments": ["It is for me only."]})
     assert "It is for me only." in task_message(answered)

@@ -5,7 +5,7 @@ import time
 import pytest
 from mini_app_polis.lambda_worker import RunOutOfTime, deadline
 
-from task_groomer_cog.worker import DEADLINE_MARGIN_SECONDS
+from task_refiner_cog.worker import DEADLINE_MARGIN_SECONDS
 
 
 class _Context:

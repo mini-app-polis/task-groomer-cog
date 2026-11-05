@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from task_groomer_cog import registry
+from task_refiner_cog import registry
 
 DOC = """services:
 - id: watcher-cog

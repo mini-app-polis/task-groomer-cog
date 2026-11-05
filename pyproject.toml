@@ -1,7 +1,7 @@
 [project]
-name = "task-groomer-cog"
+name = "task-refiner-cog"
 dynamic = ["version"]
-description = "Grooms tasks on the board: reads a task and the code it names, and proposes what it should say so an agent can work it. Runs as a Lambda worker behind its own queue; never writes to the board."
+description = "Refines tasks on the board: reads a task and the code it names, and proposes what it should say so an agent can work it. Runs as a Lambda worker behind its own queue; never writes to the board."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -28,10 +28,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/task_groomer_cog/_version.py"
+path = "src/task_refiner_cog/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/task_groomer_cog"]
+packages = ["src/task_refiner_cog"]
 
 [tool.ruff]
 line-length = 88
@@ -43,7 +43,7 @@ select = ["E", "F", "I", "B", "UP", "ASYNC"]
 ignore = ["E501", "B008"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["task_groomer_cog"]
+known-first-party = ["task_refiner_cog"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -51,7 +51,7 @@ quote-style = "double"
 [tool.pytest.ini_options]
 pythonpath = ["src", "tests/unit"]
 testpaths = ["tests/unit", "tests/integration"]
-addopts = "--cov=task_groomer_cog --cov-report=term-missing"
+addopts = "--cov=task_refiner_cog --cov-report=term-missing"
 
 [tool.mypy]
 python_version = "3.11"

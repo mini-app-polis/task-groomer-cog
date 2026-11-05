@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-25
 **Status:** Accepted
-**Repo:** task-groomer-cog
+**Repo:** task-refiner-cog
 
 ---
 
@@ -36,20 +36,20 @@ This cog does the judgment and nothing else.
   cap are enforced in the cog's own request loop, and each run's cost is
   recorded with the API, whatever the outcome.
 - **A failed run is never retried automatically.** A redelivered job would
-  pay twice, so the queue delivers each job once and the task is groomed
+  pay twice, so the queue delivers each job once and the task is refined
   again when it next changes. The one exception costs nothing: a run stopped
   by the monthly cap before any model request is sent again once there is
   budget.
 
 ## Consequences
 
-- task-manager-cog stays free to run, and the only paid step in grooming is
+- task-manager-cog stays free to run, and the only paid step in refining is
   here, where it can be capped and measured on its own.
 - A proposal can arrive for a task that has changed since. It carries the
   fingerprint of the content it was made for, and task-manager-cog does not
   apply one that no longer matches.
-- Grooming a task by hand (`python -m task_groomer_cog`) reads the board with
+- Refining a task by hand (`python -m task_refiner_cog`) reads the board with
   an Asana token, but only reads; nothing is written to the board or
   recorded with the API.
 - Quality is measured on the board: how often a task this process moved to
-  Ready is moved back (task-manager-cog's grooming records).
+  Ready is moved back (task-manager-cog's refining records).

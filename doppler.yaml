@@ -4,5 +4,5 @@
 # Local commands read production with `doppler run --config prd`; the
 # deployed worker reads its secrets from SSM, not Doppler.
 setup:
-  - project: task-groomer-cog
+  - project: task-refiner-cog
     config: dev

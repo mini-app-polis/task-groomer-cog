@@ -1,9 +1,9 @@
-# task-groomer-cog
+# task-refiner-cog
 
-[![CI](https://github.com/mini-app-polis/task-groomer-cog/actions/workflows/ci.yml/badge.svg)](https://github.com/mini-app-polis/task-groomer-cog/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/github/v/tag/mini-app-polis/task-groomer-cog?label=version)](https://github.com/mini-app-polis/task-groomer-cog/releases)
+[![CI](https://github.com/mini-app-polis/task-refiner-cog/actions/workflows/ci.yml/badge.svg)](https://github.com/mini-app-polis/task-refiner-cog/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/mini-app-polis/task-refiner-cog?label=version)](https://github.com/mini-app-polis/task-refiner-cog/releases)
 
-Grooms tasks on the board. Every task is meant to be worked by an agent that
+Refines tasks on the board. Every task is meant to be worked by an agent that
 has only the task and the repositories it names, so a task is ready when an
 agent could finish it without asking. This cog reads a task that is not
 ready, looks at the code it is about, and proposes what the task should
@@ -13,11 +13,11 @@ See [ADR-0001](docs/decisions/ADR-0001-propose-never-write.md).
 ## Flow
 
 ```
-task-manager-cog sweep ──POST /v1/tasks/groomings/jobs──► api-kaianolevine-com
+task-manager-cog sweep ──POST /v1/tasks/refinings/jobs──► api-kaianolevine-com
                                                                 │
-                                                    task-groomer queue
+                                                    task-refiner queue
                                                                 ▼
-                                                   task-groomer-cog (Lambda)
+                                                   task-refiner-cog (Lambda)
                                                      1. check the month's spend
                                                      2. the model reads the task,
                                                         then the code, with
@@ -25,7 +25,7 @@ task-manager-cog sweep ──POST /v1/tasks/groomings/jobs──► api-kaianole
                                                      3. it calls propose, once
                                                      4. record the run's cost
                                                                 │
-           POST /v1/tasks/groomings/proposals ◄─────────────────┘
+           POST /v1/tasks/refinings/proposals ◄─────────────────┘
                                 │
                    task-manager queue ──► task-manager-cog applies it
 ```
@@ -45,7 +45,7 @@ done after a date (a scheduled run, an event) is given the date
 wait. task-manager-cog holds it out of Ready until that day.
 
 **Who does a task.** A task's executor is a tag on it, named in the
-shared contract (`mini_app_polis.api.contract.GroomingExecutor`):
+shared contract (`mini_app_polis.api.contract.RefiningExecutor`):
 
 - no tag: the agent, a headless run that has only the task and the
   repositories it names;
@@ -54,7 +54,7 @@ shared contract (`mini_app_polis.api.contract.GroomingExecutor`):
 - `person`: the owner alone (consoles behind his login, accounts,
   physical checks).
 
-A task already tagged is groomed for that executor, and the groomer does
+A task already tagged is refined for that executor, and the refiner does
 not ask who does the work. For an untagged task that needs what the agent
 cannot reach, it proposes `cowork` or `person` by what the task must
 reach, and asks only when it cannot tell; task-manager-cog applies the
@@ -67,7 +67,7 @@ work, not the agent's. With splitting on, a task that holds both the
 decision and the build that follows it is split: the decision is a
 `cowork` child and the build children wait on it.
 
-**Splitting.** With `GROOMER_SPLIT=true`, a task that is neither a leaf
+**Splitting.** With `REFINER_SPLIT=true`, a task that is neither a leaf
 (one repository, one executor) nor a compound task (done when its
 children are) is split. The proposal carries its children, each a leaf
 with its own Done when, Where, Constraints, Effort, body and executor,
@@ -75,7 +75,7 @@ ordered so a child that waits on an earlier one names it by position
 (a shared library before its consumer). The task itself keeps only its
 title and body: task-manager-cog creates the children and rewrites it as
 their compound task. The number of children is capped by the shared
-contract (`GROOMING_MAX_CHILDREN`); a split over the cap, or with a child
+contract (`REFINING_MAX_CHILDREN`); a split over the cap, or with a child
 that does not hold, is dropped whole and the task is proposed without it.
 Splitting runs are paid like any other and count against the monthly cap.
 The by-hand run (`--task` without `--dry-run`) lists the children it would
@@ -88,33 +88,33 @@ can apply one.
 
 | Cap | Setting | Default |
 |---|---|---|
-| Model | `GROOMER_MODEL` | `claude-sonnet-5-5` |
-| Tool rounds per run | `GROOMER_MAX_ROUNDS` | 8; the last asks for the proposal, and a run without one fails |
-| Input tokens per run | `GROOMER_MAX_INPUT_TOKENS` | 150000; past 80% each round asks for the proposal |
-| Output tokens per reply | `GROOMER_MAX_OUTPUT_TOKENS` | 16384 |
-| Spend per calendar month (UTC) | `GROOMER_MONTHLY_CAP_USD` | 20; checked before every request |
-| Splitting | `GROOMER_SPLIT` | off; `true` lets a run split a task into children |
+| Model | `REFINER_MODEL` | `claude-sonnet-5-5` |
+| Tool rounds per run | `REFINER_MAX_ROUNDS` | 8; the last asks for the proposal, and a run without one fails |
+| Input tokens per run | `REFINER_MAX_INPUT_TOKENS` | 150000; past 80% each round asks for the proposal |
+| Output tokens per reply | `REFINER_MAX_OUTPUT_TOKENS` | 16384 |
+| Spend per calendar month (UTC) | `REFINER_MONTHLY_CAP_USD` | 20; checked before every request |
+| Splitting | `REFINER_SPLIT` | off; `true` lets a run split a task into children |
 
 The fixed part of the prompt and the tools are cached, so every round after
 the first reads them at the cache price. A run's cost is recorded with the
-API (`POST /v1/tasks/groomings/runs`) whatever the outcome, and the month's
-total (`GET /v1/tasks/groomings/spend`) is what the cap is checked
+API (`POST /v1/tasks/refinings/runs`) whatever the outcome, and the month's
+total (`GET /v1/tasks/refinings/spend`) is what the cap is checked
 against. A model missing from `pricing.py` is refused: it could not be
 capped.
 
 There are no automatic retries: the queue allows each job one receive, and
-a run that fails is reported and the task is groomed again when it next
+a run that fails is reported and the task is refined again when it next
 changes. SQS can still deliver a message twice, so before the model is
 called a run claims the task and its content's fingerprint
-(`POST /v1/tasks/groomings/claims`). Only the delivery that wins the claim
+(`POST /v1/tasks/refinings/claims`). Only the delivery that wins the claim
 is paid for; another is acknowledged with nothing run. A run that fails gives
-its claim back (`POST /v1/tasks/groomings/claims/release`) so the next send
-can groom the same content, and if the claim cannot be asked for, the job is
+its claim back (`POST /v1/tasks/refinings/claims/release`) so the next send
+can refine the same content, and if the claim cannot be asked for, the job is
 dropped rather than run unclaimed.
 
 A run stopped because the month's cap is spent makes no model request (the
 spend is checked before the first one) and reports the stop for the task and
-its content's fingerprint (`POST /v1/tasks/groomings/budget-spent`) before
+its content's fingerprint (`POST /v1/tasks/refinings/budget-spent`) before
 giving its claim back, so the API has the task sent again once there is
 budget, without waiting for it to change. A failure to report the stop is
 logged and does not fail the run. Any other failed run is not reported this
@@ -123,7 +123,7 @@ way.
 ## Layout
 
 ```
-src/task_groomer_cog/
+src/task_refiner_cog/
   worker.py     Lambda entrypoint: one job, one paid run, one proposal
   agent.py      the run: the request loop, the tools and every cap
   prompt.py     what the model is told
@@ -142,8 +142,8 @@ this repo's own Doppler `dev` config; nothing reads a `.env` file. `.env.example
 lists the names read.
 
 ```bash
-git clone git@github.com:mini-app-polis/task-groomer-cog.git
-cd task-groomer-cog
+git clone git@github.com:mini-app-polis/task-refiner-cog.git
+cd task-refiner-cog
 doppler setup                              # reads doppler.yaml: mini-app-polis-ecosystem / dev
 uv sync --all-extras
 uv run pre-commit install
@@ -154,15 +154,15 @@ uv run pre-commit run --all-files
 request with Anthropic's free token-counting endpoint. Nothing is spent:
 
 ```bash
-doppler run -- uv run python -m task_groomer_cog --dry-run --task 1219712805103580
-doppler run -- uv run python -m task_groomer_cog --dry-run --board
+doppler run -- uv run python -m task_refiner_cog --dry-run --task 1219712805103580
+doppler run -- uv run python -m task_refiner_cog --dry-run --board
 ```
 
-**Groom one task for real.** This is a paid run. It prints the proposal,
+**Refine one task for real.** This is a paid run. It prints the proposal,
 the tools the model used and the cost, and writes nothing anywhere:
 
 ```bash
-doppler run -- uv run python -m task_groomer_cog --task 1219712805103580
+doppler run -- uv run python -m task_refiner_cog --task 1219712805103580
 ```
 
 ## Running tests
