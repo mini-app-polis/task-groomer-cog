@@ -1,3 +1,11 @@
+## [1.10.3](https://github.com/mini-app-polis/task-refiner-cog/compare/v1.10.2...v1.10.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.19.0 ([20bcd81](https://github.com/mini-app-polis/task-refiner-cog/commit/20bcd8155b0d61866fed8f21b605192997f2a21d))
+* **deps:** bump oauthlib to 4.0.1 and miniapppolis-common-utils to 7.20.0 ([9fca471](https://github.com/mini-app-polis/task-refiner-cog/commit/9fca471f6e70e20d83d41d8fc580395154ff6f78))
+
 ## [1.10.2](https://github.com/mini-app-polis/task-refiner-cog/compare/v1.10.1...v1.10.2) (2026-11-05)
 
 
